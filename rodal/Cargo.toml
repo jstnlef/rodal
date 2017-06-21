@@ -1,0 +1,11 @@
+[package]
+name = "rodal"
+version = "0.0.1"
+authors = [ "Your name <you@example.com>" ]
+include = ["Cargo.toml", "src/**/*.rs", "README.md"]
+
+#[dependencies]
+#rodal_derive = { version = "0.0.1", optional = true, path = "../rodal_derive" }
+
+#[dev-dependencies]
+#rodal_derive = { version = "0.0.1", path = "../rodal_derive" }

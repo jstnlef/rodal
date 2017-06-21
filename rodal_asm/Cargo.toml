@@ -1,0 +1,8 @@
+[package]
+name = "rodal_asm"
+version = "0.0.1"
+authors = [ "Your name <you@example.com>" ]
+include = ["Cargo.toml", "src/**/*.rs"]
+
+[dependencies]
+rodal = { version = "0.0.1", path = "../rodal" }
