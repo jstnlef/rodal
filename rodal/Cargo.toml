@@ -4,8 +4,12 @@ version = "0.0.1"
 authors = [ "Your name <you@example.com>" ]
 include = ["Cargo.toml", "src/**/*.rs", "README.md"]
 
-#[dependencies]
+[dependencies]
 #rodal_derive = { version = "0.0.1", optional = true, path = "../rodal_derive" }
+libc = "0.2.24"
+num = "0.1.39"
+log = "0.3.5"
+stderrlog = "0.2.2"
 
 #[dev-dependencies]
 #rodal_derive = { version = "0.0.1", path = "../rodal_derive" }
