@@ -6,14 +6,16 @@ use super::*;
 
 
 pub unsafe fn load_asm_pointer<'a, T: ?Sized>(ptr: *mut T) -> &'a T {
-    RODAL_END = Some(mem::transmute(libc::dlsym(libc::RTLD_NEXT, RODAL_END_NAME.as_ptr())));
-    RODAL_START = Some(mem::transmute(libc::dlsym(libc::RTLD_NEXT, RODAL_START_NAME.as_ptr())));
+    RODAL_END = Some(mem::transmute(libc::dlsym(libc::RTLD_NEXT, mem::transmute(RODAL_END_NAME.as_ptr()))));
+    RODAL_START = Some(mem::transmute(libc::dlsym(libc::RTLD_NEXT, mem::transmute(RODAL_START_NAME.as_ptr()))));
 
     mem::transmute(ptr)
 }
 pub fn load_asm_name<'a, T>(name: &str) -> &'a T {
-    unsafe {RODAL_END = Some(mem::transmute(libc::dlsym(libc::RTLD_NEXT, RODAL_END_NAME.as_ptr())))};
-    unsafe {RODAL_START = Some(mem::transmute(libc::dlsym(libc::RTLD_NEXT, RODAL_START_NAME.as_ptr())))};
+    unsafe {
+        RODAL_END = Some(mem::transmute(libc::dlsym(libc::RTLD_NEXT, mem::transmute(RODAL_END_NAME.as_ptr()))));
+        RODAL_START = Some(mem::transmute(libc::dlsym(libc::RTLD_NEXT, mem::transmute(RODAL_START_NAME.as_ptr()))));
+    }
 
     let rtld_default = unsafe {libc::dlopen(ptr::null(), 0)};
     let cstring = CString::new(name.to_string());
@@ -44,10 +46,10 @@ const REALLOC_NAME: &'static [u8] = b"realloc\0";
 #[inline]
 unsafe fn init_deallocate() {
     if REAL_FREE.is_none() {
-        REAL_FREE = Some(mem::transmute(libc::dlsym(libc::RTLD_NEXT, FREE_NAME.as_ptr())));
+        REAL_FREE = Some(mem::transmute(libc::dlsym(libc::RTLD_NEXT, mem::transmute(FREE_NAME.as_ptr()))));
         assert!(REAL_FREE.is_some());
 
-        REAL_REALLOC = Some(mem::transmute(libc::dlsym(libc::RTLD_NEXT, REALLOC_NAME.as_ptr())));
+        REAL_REALLOC = Some(mem::transmute(libc::dlsym(libc::RTLD_NEXT, mem::transmute(REALLOC_NAME.as_ptr()))));
         assert!(REAL_REALLOC.is_some());
     }
 }

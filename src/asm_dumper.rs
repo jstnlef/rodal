@@ -98,7 +98,8 @@ pub struct AsmDumper<W: Write>
 impl<W: Write> AsmDumper<W> {
     pub fn new(mut file: W) -> AsmDumper<W> {
         file.write_fmt(format_args!(
-            ".global RODAL_START\n\
+            ".data\n\
+             .global RODAL_START\n\
              RODAL_START:\n")).unwrap();
         AsmDumper::<W> {
             file: file,
@@ -154,7 +155,7 @@ impl<W: Write> AsmDumper<W> {
             self.write_size_align(value.size, value.alignment);
             self.write_label_declaration(value.label.clone());
             self.dump_object_function_here(value.value.to_ref::<()>(), value.dump);
-            trace!("[{}, {}, +{})", start, self.current_pointer, value.size);
+            debug!("finish [{}, {}, +{})", start, self.current_pointer, value.size);
             self.advance_position(start + value.size);
             self.write_size(value.label);
         }
@@ -296,7 +297,8 @@ impl<W: Write> Dumper for AsmDumper<W> {
     }
     /// Record the given complete object as needing to be dumped (because it is referenced)
     fn reference_object_function_sized_position<T: ?Sized, P: ?Sized>(&mut self, value: &T, dump: DumpFunction<Self>, position: &P, size: usize, alignment: usize) {
-        assert!(alignment != 0);
+        // Objects with zero size should never be referenced
+        assert!(size != 0 && alignment != 0);
         let start = Address::new(position);
         trace!("{:?}: reference_object_sized_position({}, {}, {}, {})", self.current_pointer, Address::new(value), start, size, alignment);
 

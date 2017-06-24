@@ -33,7 +33,7 @@ match self {
                 dumper.dump_suffix_value(self);
 	}
 */
-
+//#![feature(trace_macros)]
 extern crate libc;
 extern crate num;
 
@@ -46,23 +46,10 @@ mod macros;
 mod asm_dumper;
 mod asm_loader;
 mod address;
-
-//pub use dump_macros::*;
-mod rodal
-{
-    pub use address::Address;
-    pub use asm_loader::load_asm_pointer;
-    pub use asm_loader::load_asm_name;
-    pub use asm_loader::load_asm_tags;
-    pub use asm_loader::free;
-    pub use asm_loader::realloc;
-    pub use asm_dumper::AsmDumper;
-    pub use super::Dump;
-    pub use super::DumpFunction;
-    pub use super::Dumper;
-    pub use super::DumpList;
-}
-pub use rodal::*;
+mod dump_std;
+pub use asm_dumper::*;
+pub use asm_loader::*;
+pub use address::*;
 
 
 pub unsafe trait Dump {
@@ -88,7 +75,7 @@ pub trait Dumper {
     #[inline] fn dump_padding<T: ?Sized>(&mut self, target: &T) {
         let current = self.current_position();
         let target = Address::new(target);
-        trace!("{:?}: \tdump_padding({:?})", current, target);
+        trace!("{}: \tdump_padding({})", current, target);
         assert!(target >= current);
         self.dump_padding_sized((target - current) as usize);
     }
@@ -212,5 +199,3 @@ impl<D: ?Sized + Dumper> DumpList<D> {
     }
     #[inline] pub fn first(&self)->&() { self.0.keys().next().unwrap().to_ref() }
 }
-
-mod dump_std;
