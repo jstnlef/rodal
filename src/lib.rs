@@ -1,54 +1,15 @@
-/* DERIVES:
-struct;
-	// DO NOTHING
-
-struct {f0: T0, ...}
-// Ordered
-	dumper.dump_object(&self.f0)...
-// Unordered
-	let list = DumpList::<D>::new();
-	list.add(&self.f0)...
-	list.dump
-
-struct (T0, ...)
-// Ordered
-	dumper.dump_object(&self.0)...
-// Unordered
-	let list = DumpList::<D>::new();
-	list.add(&self.0)...
-	list.dump
-
-enum {Unit, Tuple(T0, ...), Struct{f0: T0, ...}}
-match self {
-	&Unit => dumper.dump_value(self),
-	&Tuple(ref f0, ...) | &Struct{ref f0, ...} => {
-                dumper.dump_prefix_value(f0);
-	// Ordered
-		dumper.dump_object(f0)...
-	// Unordered
-		let list = DumpList::<D>::new();
-		list.add(f0)...
-		list.dump
-	// ---------
-                dumper.dump_suffix_value(self);
-	}
-*/
-//#![feature(trace_macros)]
 extern crate libc;
 extern crate num;
 
 #[macro_use]
 extern crate log;
-extern crate stderrlog;
 
 #[macro_use]
 mod macros;
 mod asm_dumper;
-mod asm_loader;
 mod address;
 mod dump_std;
 pub use asm_dumper::*;
-pub use asm_loader::*;
 pub use address::*;
 
 
@@ -75,7 +36,7 @@ pub trait Dumper {
     #[inline] fn dump_padding<T: ?Sized>(&mut self, target: &T) {
         let current = self.current_position();
         let target = Address::new(target);
-        trace!("{}: \tdump_padding({})", current, target);
+        //trace!("{}: \tdump_padding({})", current, target);
         assert!(target >= current);
         self.dump_padding_sized((target - current) as usize);
     }

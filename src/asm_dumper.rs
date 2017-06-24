@@ -74,8 +74,9 @@ const POINTER_DIRECTIVE: &str = ".quad";
 const POINTER_DIRECTIVE: &str = ".xword";
 
 enum AsmDirective {
-    // Use other for a directive that can't be continued
-    Byte, Ptr, Other // Ptr is a pseudo-directive it will translate to the appropriate directive for the target
+    String,     // Whe are inside a .ascii
+    Ptr,        // We are inside a POINTER_DIRECTIVE 
+    Other       // we aran't inside either
 }
 
 pub struct AsmDumper<W: Write>
@@ -97,10 +98,7 @@ pub struct AsmDumper<W: Write>
 
 impl<W: Write> AsmDumper<W> {
     pub fn new(mut file: W) -> AsmDumper<W> {
-        file.write_fmt(format_args!(
-            ".data\n\
-             .global RODAL_START\n\
-             RODAL_START:\n")).unwrap();
+        file.write_all(b"#START RODAL DUMP\n\t.data\n").unwrap();
         AsmDumper::<W> {
             file: file,
             current_pointer: Address::null(),
@@ -117,13 +115,11 @@ impl<W: Write> AsmDumper<W> {
 
         let start = Address::new(value);
         let label = AsmLabel::new(name.to_string());
-        trace!("{}: dump_sized({}, {}, {}, {})", self.current_pointer, name, start, size, alignment);
+        //trace!("{}: dump_sized({}, {}, {}, {})", self.current_pointer, name, start, size, alignment);
 
         self.current_pointer = Address::new(value);
 
-        trace!("-> {}", self.current_pointer);
-        //unsafe {DEBUG_START_ADDRESS = self.current_pointer.value()};
-
+        trace!("dumping {} [{}, {}):", label.base.clone(), start, start + size);
         self.write_global(label.clone());
         self.write_type_object(label.clone());
         self.write_size_align(size, alignment);
@@ -137,7 +133,7 @@ impl<W: Write> AsmDumper<W> {
     }
 
     pub fn finish(&mut self) {
-        trace!("{:?}: finish()", self.current_pointer);
+        //trace!("{:?}: finish()", self.current_pointer);
 
         // Still more objects to dump
         while !self.pending_objects.is_empty() {
@@ -148,14 +144,11 @@ impl<W: Write> AsmDumper<W> {
             self.dumped_objects.insert(start, value.clone());
             self.current_pointer = start;
 
-            trace!("-> {}", self.current_pointer);
-            //unsafe {DEBUG_START_ADDRESS = self.current_pointer.value()};
-
+            trace!("dumping {} [{}, {}):", value.label.base.clone(), start, start + value.size);
             self.write_type_object(value.label.clone());
             self.write_size_align(value.size, value.alignment);
             self.write_label_declaration(value.label.clone());
             self.dump_object_function_here(value.value.to_ref::<()>(), value.dump);
-            debug!("finish [{}, {}, +{})", start, self.current_pointer, value.size);
             self.advance_position(start + value.size);
             self.write_size(value.label);
         }
@@ -170,47 +163,60 @@ impl<W: Write> AsmDumper<W> {
         assert!(self.pending_references.is_empty()); // We should've dumped all referenced objects by now
 
         // Write a label indicating the size and end of the rodal dump
-        self.file.write_fmt(format_args!(
-            "\n  \t.global RODAL_END   \n\
-                 \t.balign {}          \n\
-            RODAL_END:                 \n\
-                 \t{} .-RODAL_START\n", mem::align_of::<usize>(), POINTER_DIRECTIVE)).unwrap();
+        self.file.write_all(b"#END RODAL DUMP\n").unwrap();
     }
 
+    #[inline]
+    fn start_directive(&mut self, new_directive: AsmDirective) {
+        match self.current_directive {
+            AsmDirective::String => {self.file.write_all(b"\"\n").unwrap();}
+            AsmDirective::Ptr => {self.file.write_all(b"\n").unwrap();}
+            _ => {}
+        }
+        self.current_directive = new_directive;
+    }
     #[inline]
     pub fn dump<T: ?Sized + Dump>(&mut self, name: &str, value: &T)  -> &mut Self {
         self.dump_sized(name, value, mem::size_of_val(value), mem::align_of_val(value))
     }
     #[inline]
     fn write_skip(&mut self, size: usize)  {
-        self.current_directive = AsmDirective::Other;
-        self.file.write_fmt(format_args!("\n\t.skip {}", size)).unwrap();
+        self.start_directive(AsmDirective::Other);
+        self.file.write_fmt(format_args!("\t.skip {}\n", size)).unwrap();
     }
 
     #[inline]
     fn write_byte(&mut self, value: u8)  {
         match self.current_directive {
-            // Continue the current .byte directive
-            AsmDirective::Byte => self.file.write_fmt(format_args!{", {:#02x}", value}).unwrap(),
+            // Continue the current string directive
+            AsmDirective::String => {},
             _ => {
-                self.current_directive = AsmDirective::Byte;
-                // Start a new .byte directive
-                self.file.write_fmt(format_args!{"\n\t.byte {:#02x}", value}).unwrap();
+                self.start_directive(AsmDirective::String);
+                // Start a new string directive
+                self.file.write_all(b"\t.ascii \"").unwrap();
             }
+        }
+
+        match value {
+            // Some characters need to be escaped
+            0x0a => self.file.write_all(b"\\\n").unwrap(),// Linefead
+            0x5c => self.file.write_all(b"\\\\").unwrap(), // Backslash
+            0x22 => self.file.write_all(b"\\\"").unwrap(),// Couble Quoutes
+            _ => self.file.write_all(&[value]).unwrap(),
         }
     }
 
     #[inline]
     fn write_size(&mut self, label: AsmLabel)  {
         assert!(label.offset == 0);
-        self.current_directive = AsmDirective::Other;
-        self.file.write_fmt(format_args!("\n\t.size {}, .-{}\n", label.base, label.base)).unwrap();
+        self.start_directive(AsmDirective::Other);
+        self.file.write_fmt(format_args!("\t.size {}, .-{}\n\n", label.base, label.base)).unwrap();
     }
 
     #[inline]
     fn write_equiv(&mut self, target: AsmLabel, source: AsmLabel)  {
-        self.current_directive = AsmDirective::Other;
-        self.file.write_fmt(format_args!("\n\t.equiv {}, {}", target.base, source.offset(-target.offset))).unwrap();
+        self.start_directive(AsmDirective::Other);
+        self.file.write_fmt(format_args!("\t.equiv {}, {}\n", target.base, source.offset(-target.offset))).unwrap();
     }
 
     #[inline]
@@ -219,9 +225,9 @@ impl<W: Write> AsmDumper<W> {
             // Continue the current ptr directive
             AsmDirective::Ptr => self.file.write_fmt(format_args!{", {}", label}).unwrap(),
             _ => {
-                self.current_directive = AsmDirective::Ptr;
+                self.start_directive(AsmDirective::Ptr);
                 // Start a new ptr directive
-                self.file.write_fmt(format_args!{"\n\t{} {}", POINTER_DIRECTIVE, label}).unwrap();
+                self.file.write_fmt(format_args!{"\t{} {}", POINTER_DIRECTIVE, label}).unwrap();
             }
         }
     }
@@ -232,17 +238,17 @@ impl<W: Write> AsmDumper<W> {
     fn write_size_align(&mut self, size: usize, alignment: usize)  {
         // We need to align to usize as we will store a usize indicating the size of the object
         let alignment = lcm(mem::align_of::<usize>(), alignment);
-        self.current_directive = AsmDirective::Other;
-        self.file.write_fmt(format_args!("\n\t.balign {}", alignment)).unwrap();
+        self.start_directive(AsmDirective::Other);
+        self.file.write_fmt(format_args!("\t.balign {}\n", alignment)).unwrap();
 
         // Add neccesary padding so that the data for the object is properly aligned
-        let padding = (alignment - 1)*mem::size_of::<usize>();
-        self.file.write_fmt(format_args!("\n\t.skip {}", padding)).unwrap();
+        let padding = alignment - mem::size_of::<usize>();
+        if padding > 0 {
+            self.file.write_fmt(format_args!("\t.skip {}\n", padding)).unwrap();
+        }
 
         // Write the size, which will be aligned to mem::align_of::<usize>()
-        self.current_directive = AsmDirective::Ptr;
-        // Start a new ptr directive
-        self.file.write_fmt(format_args!{"\n\t{} {}", POINTER_DIRECTIVE, size}).unwrap();
+        self.file.write_fmt(format_args!{"\t{} {}\n", POINTER_DIRECTIVE, size}).unwrap();
 
         // Now the next thing that is written will be aligned to alignment
         // And have a properly aligned usize immediatly before it
@@ -251,26 +257,26 @@ impl<W: Write> AsmDumper<W> {
     #[inline]
     fn write_global(&mut self, label: AsmLabel) {
         assert!(label.offset == 0);
-        self.current_directive = AsmDirective::Other;
-        self.file.write_fmt(format_args!("\n\t.globl {}", label.base)).unwrap();
+        self.start_directive(AsmDirective::Other);
+        self.file.write_fmt(format_args!("\t.globl {}\n", label.base)).unwrap();
     }
     #[inline]
     fn write_type_object(&mut self, label: AsmLabel) {
         assert!(label.offset == 0);
-        self.current_directive = AsmDirective::Other;
-        self.file.write_fmt(format_args!("\n\t.type {}, object", label.base)).unwrap();
+        self.start_directive(AsmDirective::Other);
+        self.file.write_fmt(format_args!("\t.type {}, object\n", label.base)).unwrap();
     }
     #[inline]
     fn write_label_declaration(&mut self, label: AsmLabel) {
         assert!(label.offset == 0);
-        self.current_directive = AsmDirective::Other;
-        self.file.write_fmt(format_args!("\n{}:", label.base)).unwrap();
+        self.start_directive(AsmDirective::Other);
+        self.file.write_fmt(format_args!("{}:\n", label.base)).unwrap();
     }
 
     #[inline]
     /// Advanced the current pointer to the specified address, adding padding as neccesary
     fn advance_position(&mut self, address: Address) {
-        trace!("{:?}: advance_position({:?})", self.current_pointer, address);
+        //trace!("{:?}: advance_position({:?})", self.current_pointer, address);
 
         let padding = address - self.current_pointer;
         assert!(padding >= 0);
@@ -278,14 +284,14 @@ impl<W: Write> AsmDumper<W> {
             self.write_skip(padding as usize);
         }
         self.current_pointer += padding;
-        trace!("+ {} -> {:?}", padding, self.current_pointer);
+        //trace!("+ {} -> {:?}", padding, self.current_pointer);
     }
 }
 
 // WARNING: Never dump an object of zero size (i.e. such an object should have a trivial dump method)
 impl<W: Write> Dumper for AsmDumper<W> {
     fn tag_reference<T: ?Sized>(&mut self, value: &T, tag: usize) {
-        trace!("{:?}: tag_reference({:?}, {})", self.current_pointer, Address::new(value), tag);
+        //trace!("{:?}: tag_reference({:?}, {})", self.current_pointer, Address::new(value), tag);
         let value = value as *const T as *const();
 
         match self.tags.get_mut(&tag) {
@@ -300,7 +306,7 @@ impl<W: Write> Dumper for AsmDumper<W> {
         // Objects with zero size should never be referenced
         assert!(size != 0 && alignment != 0);
         let start = Address::new(position);
-        trace!("{:?}: reference_object_sized_position({}, {}, {}, {})", self.current_pointer, Address::new(value), start, size, alignment);
+        //trace!("{:?}: reference_object_sized_position({}, {}, {}, {})", self.current_pointer, Address::new(value), start, size, alignment);
 
         // We already have a record for this object
         if self.dumped_objects.contains_key(&start) || self.pending_objects.contains_key(&start) {
@@ -344,7 +350,7 @@ impl<W: Write> Dumper for AsmDumper<W> {
 
     fn dump_reference_here<T: ?Sized>(&mut self, value: &&T) {
         let ptr = Address::new(*value);
-        trace!("{:?}: dump_reference_here({:?} = &{})", self.current_pointer, Address::new(value), ptr);
+        //trace!("{:?}: dump_reference_here({:?} = &{})", self.current_pointer, Address::new(value), ptr);
 
         // Look for a recorded complete object containg this,..
         let label = match get_complete_object(ptr, &self.dumped_objects) {
@@ -362,30 +368,30 @@ impl<W: Write> Dumper for AsmDumper<W> {
         self.write_label_reference(label);
         // Pointerr & references should always have the same size, so theres no need to override this
         self.current_pointer += mem::size_of::<&&T>();
-        trace!("+ {} -> {:?}", mem::size_of::<&&T>(), self.current_pointer);
+        //trace!("+ {} -> {:?}", mem::size_of::<&&T>(), self.current_pointer);
     }
 
     /// Dump the raw value of the object
     fn dump_value_sized_here<T: ?Sized>(&mut self, value: &T, size: usize) {
         let value = Address::new(value);
-        trace!("{:?}: dump_value_sized_here({:?}, {})", self.current_pointer, value, size);
+        //trace!("{:?}: dump_value_sized_here({:?}, {})", self.current_pointer, value, size);
 
         for i in 0..size {
             // Write the byte
             self.write_byte(*(value + i).to_ref::<u8>());
         }
         self.current_pointer += size;
-        trace!("+ {} -> {:?}", size, self.current_pointer);
+        //trace!("+ {} -> {:?}", size, self.current_pointer);
     }
 
     fn dump_padding_sized(&mut self, size: usize) {
-        trace!("{:?}: dump_padding_sized({})", self.current_pointer, size);
+        //trace!("{:?}: dump_padding_sized({})", self.current_pointer, size);
 
         if size != 0 {
             self.write_skip(size);
         }
         self.current_pointer += size;
-        trace!("+ {} -> {:?}", size, self.current_pointer);
+        //trace!("+ {} -> {:?}", size, self.current_pointer);
     }
 
     fn current_position(&self) -> Address {
@@ -394,7 +400,7 @@ impl<W: Write> Dumper for AsmDumper<W> {
 
     fn dump_object_function_here(&mut self, value: &(), dump: DumpFunction<Self>) {
         let start = Address::new(value);
-        trace!("{:?}: dump_object_function_here({:?}, {})", self.current_pointer, start, unsafe{mem::transmute::<DumpFunction<Self>, Address>(dump)});
+        //trace!("{:?}: dump_object_function_here({:?}, {})", self.current_pointer, start, unsafe{mem::transmute::<DumpFunction<Self>, Address>(dump)});
         (dump)(value, self);
     }
 }

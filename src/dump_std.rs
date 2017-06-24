@@ -63,7 +63,7 @@ rodal_object_reference!([T: ?Sized + Dump] Shared<T> = &T);
 pub struct Vec<T> { buf: RawVec<T>, pub len: usize }
 unsafe impl<T: Dump> Dump for std::vec::Vec<T> {
     fn dump<D: ?Sized + Dumper>(&self, dumper: &mut D) {
-        debug!("{}: std::vec::Vec<T>::dump(dumper)", super::Address::new(self));
+        trace!("\t{}: std::vec::Vec<T>::dump(dumper)", super::Address::new(self));
 
         // Transmute to the fake_std version so we can access private fields
         let fake_self: &Vec<T> = unsafe{std::mem::transmute(self)};
@@ -90,7 +90,7 @@ unsafe impl<T: Dump> Dump for std::vec::Vec<T> {
 impl <T: Dump> Vec<T> {
     fn dump_contents<D: ?Sized + Dumper>(&self, dumper: &mut D) {
         let pos = super::Address::new(self.buf.ptr.as_ref());
-        debug!("{}: std::vec::Vec<T>::dump_contents({}, dumper)", pos, super::Address::new(self));
+        trace!("\t{}: std::vec::Vec<T>::dump_contents({}, dumper)", pos, super::Address::new(self));
         // Dump each element of the vector
         for i in 0..self.len {
             unsafe{(*self.buf.ptr.as_ptr().offset(i as isize)).dump(dumper)}
@@ -129,7 +129,7 @@ pub struct RwLock<T: ?Sized> {
 // Acquires a read lock on it's contents before it dumps
 unsafe impl<T: ?Sized + Dump> Dump for std::sync::RwLock<T> {
     fn dump<D: ?Sized + Dumper>(&self, dumper: &mut D) {
-        debug!("{}:std::sync::RwLock<T>::dump", super::Address::new(self));
+        trace!("\t{}:std::sync::RwLock<T>::dump", super::Address::new(self));
         use std::ops::Deref;
         // Acquire a read lock to self (just so no one tries to modify the contents whilst we try and dump it)
         let lock = self.read().unwrap();
@@ -177,7 +177,7 @@ mod sys {
 //pub struct sys::RWLock { pub inner: super::UnsafeCell<SRWLOCK> }
 unsafe impl Dump for sys::RWLock {
     fn dump<D: ?Sized + Dumper>(&self, dumper: &mut D) {
-        debug!("{}: sys::RWLock::dump", super::Address::new(self));
+        trace!("\t{}: sys::RWLock::dump", super::Address::new(self));
 
         // Create a new std::sync::RwLock, and dump its value of inner
         // (so that when we load the dump the RwLock will have it's initial state)
@@ -202,7 +202,7 @@ pub struct HashMap<K, V, S = RandomState> {
 unsafe impl<K: Eq + std::hash::Hash + Dump, V: Dump, S: std::hash::BuildHasher + Dump> Dump
 for std::collections::HashMap<K, V, S> {
     fn dump<D: ?Sized + Dumper>(&self, dumper: &mut D) {
-        debug!("{}: std::collections::HashMap<K, V, S>::dump(dumper)", super::Address::new(self));
+        trace!("\t{}: std::collections::HashMap<K, V, S>::dump(dumper)", super::Address::new(self));
         // Transmute to the fake_std version so we can access private fields
         let fake_self: &HashMap<K, V, S> = unsafe{std::mem::transmute(self)};
 
@@ -229,8 +229,6 @@ for std::collections::HashMap<K, V, S> {
             let align = std::cmp::max(hash_align, pair_align);
 
             let pos = super::Address::new(unsafe{&*fake_self.table.hashes.ptr()});
-            debug!("\t {} -> dump_contents", pos);
-
             dumper.reference_object_function_sized_position(
                 fake_self, // the argument to pass to the dump function
                 // The function to use to dump the contents
@@ -247,7 +245,7 @@ impl<K: Eq + std::hash::Hash + Dump, V: Dump, S: std::hash::BuildHasher + Dump>
 HashMap<K, V, S> {
     fn dump_contents<D: ?Sized + Dumper>(&self, dumper: &mut D) {
         let pos = super::Address::new(unsafe{&*self.table.hashes.ptr()});
-        debug!("{}: std::collections::HashMap<K, V, S>::dump_contents({}, dumper)", pos, super::Address::new(self));
+        trace!("\t{}: std::collections::HashMap<K, V, S>::dump_contents({}, dumper)", pos, super::Address::new(self));
 
         // Dump the stored hashes
         dumper.dump_value_sized(pos.to_ref::<HashUint>(), self.table.capacity()*std::mem::size_of::<HashUint>());
