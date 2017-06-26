@@ -7,6 +7,7 @@ build = "build.rs"
 
 [build-dependencies]
 rustc_version = "*"
+rodal_alloc = {path = "alloc"}
 
 [dependencies]
 libc = "0.2.24"

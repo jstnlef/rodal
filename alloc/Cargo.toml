@@ -6,7 +6,6 @@ include = ["Cargo.toml", "src/**/*.rs"]
 
 [dependencies]
 libc = "*"
-lazy_static = "*"
 rodal = { version = "*", path = "../../rodal" }
 
 [lib]

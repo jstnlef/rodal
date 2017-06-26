@@ -2,6 +2,7 @@ extern crate libc;
 extern crate num;
 
 #[macro_use]
+#[cfg(debug_assertions)]
 extern crate log;
 #[macro_use]
 extern crate field_offset;
@@ -35,7 +36,10 @@ pub type DumpFunction<D: Dumper> = fn(&(), &mut D);
 pub trait Dumper {
     // For debugging purposes, records that we are in the dump function 'func_name'
     // for the type 'type_name'
+    #[cfg(debug_assertions)]
     fn debug_record(&mut self, type_name: &str, func_name: &str);
+    #[cfg(not(debug_assertions))]
+    #[inline(always)] fn debug_record(&mut self, _: &str, _: &str) { }
 
     fn set_position(&mut self, new_position: Address);
     /// Returns the address of the end of the last thing the dumper dumped

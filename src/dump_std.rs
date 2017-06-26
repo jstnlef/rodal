@@ -32,11 +32,16 @@ rodal_value!(f32);
 rodal_value!(f64);
 rodal_value!(char);
 //rodal_enum!([T: Dump] std::option::Option<T>{None, (Some: val)});
+// This is implemented manually as the rodal_enum! macro dosn't work with generics...
 unsafe impl<T: Dump> Dump for std::option::Option<T> {
     fn dump<D: ?Sized + Dumper>(&self, dumper: &mut D) {
         dumper.debug_record("std::option::Option<T>", "dump");
         match self {
-            &Some(ref val) => dumper.dump_object_here(val),
+            &Some(ref val) => {
+                dumper.dump_prefix_value(val);
+                dumper.dump_object(val);
+                dumper.dump_suffix_value(self);
+            },
             &None => dumper.dump_value(self)
         }
     }
@@ -260,18 +265,28 @@ HashMap<K, V, S> {
         // Dump the stored hashes
         dumper.dump_value_sized(real_pos, self.table.capacity()*std::mem::size_of::<HashUint>());
 
-        // Create a list to hold the positions and dump functions of the tables contents
-        // (in case iteration dosn't occur in memory order)
-        let mut list = DumpList::<D>::new();
-
         let real_self: &std::collections::HashMap<K, V, S> = unsafe{std::mem::transmute(self)};
-        // Record each element of the table in the list
+
+
+        // WARNING: We're assuming here that iteration happens in memory order
+        // (so far it has worked, but if it dosn,t try using the comment out code bellow instead)
         for (key, value) in real_self {
-            list.add(key);
-            list.add(value);
+            dumper.dump_object(key); // Assuming eveything is stored in this order
+            dumper.dump_object(value);
         }
-        // Dump the tables contents
-        list.dump(dumper);
+
+        /*  // Create a list to hold the positions and dump functions of the tables contents
+            // (in case iteration dosn't occur in memory order)
+            let mut list = DumpList::<D>::new();
+            for (key, value) in real_self {
+                list.add(key);
+                list.add(value);
+            }
+
+            // Record each element of the table in the list
+            // Dump the tables contents
+            list.dump(dumper);
+        */
     }
 }
 

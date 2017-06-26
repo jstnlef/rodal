@@ -85,7 +85,10 @@ pub struct AsmDumper<W: Write>
 
     current_pointer: Address, // This is the pointer into the output we are dumping
     position_offset: isize, // The offset from current_pointer to tell objects where we are
+
+    #[cfg(debug_assertions)]
     debug_stack: Vec<Address>, // For debugging only
+    #[cfg(debug_assertions)]
     debug_indent: Vec<usize>, // How much to indent debugging info by
 
     /// Objects we've already dumped (or started to dump)
@@ -100,6 +103,7 @@ pub struct AsmDumper<W: Write>
 }
 
 impl<W: Write> AsmDumper<W> {
+    #[cfg(debug_assertions)]
     pub fn new(mut file: W) -> AsmDumper<W> {
         file.write_all(b"#START RODAL DUMP\n\t.data\n").unwrap();
         AsmDumper::<W> {
@@ -109,6 +113,20 @@ impl<W: Write> AsmDumper<W> {
             position_offset: 0,
             debug_stack: Vec::new(),
             debug_indent: Vec::new(),
+            dumped_objects: BTreeMap::new(),
+            pending_objects: BTreeMap::new(),
+            pending_references: BTreeSet::new(),
+            tags: HashMap::new()
+        }
+    }
+    #[cfg(not(debug_assertions))]
+    pub fn new(mut file: W) -> AsmDumper<W> {
+        file.write_all(b"#START RODAL DUMP\n\t.data\n").unwrap();
+        AsmDumper::<W> {
+            file: file,
+            current_directive: AsmDirective::Other,
+            current_pointer: Address::null(),
+            position_offset: 0,
             dumped_objects: BTreeMap::new(),
             pending_objects: BTreeMap::new(),
             pending_references: BTreeSet::new(),
@@ -142,12 +160,14 @@ impl<W: Write> AsmDumper<W> {
     }
 
     pub fn dump_tags(&mut self) {
+        self.finish(); // Dump eveything that might need to be tagged
+
         // This is totally undefined bheaviour
         // as this creates a immutable borrow to self (the reference to self.tags)
         // and we then create a muttable borrow (to self in the call to self.dump)
-        let tags = Address::new(&self.tags);
-        self.dump("RODAL_TAGS", tags.to_ref::<HashMap<usize, Vec<*const ()>>>());
-        self.finish();
+        //let tags = Address::new(&self.tags);
+        let tags: HashMap<usize, Vec<*const ()>> = self.tags.clone(); // This is soo unnecesary...
+        self.dump("RODAL_TAGS", &tags);
     }
     pub fn finish(&mut self) {
         //trace!("{:?}: finish()", self.current_pointer);
@@ -322,10 +342,10 @@ impl<W: Write> Dumper for AsmDumper<W> {
         // Just don't allow them, it makes things simpler.
         assert!(size != 0 && alignment != 0);
         let start = Address::new(position);
-        trace!("{empty:indent$} =>{location}",
+        debug_only!(trace!("{empty:indent$} =>{location}",
             empty = "",
             indent = *self.debug_indent.last().unwrap(),
-            location = start);
+            location = start));
 
         //trace!("{:?}: reference_object_sized_position({}, {}, {}, {})", self.current_pointer, Address::new(value), start, size, alignment);
 
@@ -376,10 +396,10 @@ impl<W: Write> Dumper for AsmDumper<W> {
 
     fn dump_reference_here<T: ?Sized>(&mut self, value: &&T) {
         let ptr = Address::new(*value);
-        trace!("{empty:indent$} ->{location}",
+        debug_only!(trace!("{empty:indent$} ->{location}",
             empty = "",
             indent = *self.debug_indent.last().unwrap(),
-            location = ptr);
+            location = ptr));
 
         //trace!("{:?}: dump_reference_here({:?} = &{})", self.current_pointer, Address::new(value), ptr);
 
@@ -425,22 +445,21 @@ impl<W: Write> Dumper for AsmDumper<W> {
         //trace!("+ {} -> {:?}", size, self.current_pointer);
     }
 
+    #[cfg(debug_assertions)]
     fn debug_record(&mut self, type_name: &str, func_name: &str) {
-        debug_only!({
-            // Print the level, followed by a collen, followed 'level' spaces,
-            // followed by the offset (with a sign) a tab, and the type and function name
-            let indent = format!("{level}:{empty:level$}{offset:+}:        ",
-                level = self.debug_stack.len(),
-                empty = "",
-                offset = self.current_pointer - *self.debug_stack.last().unwrap_or(&self.current_pointer));
-            self.debug_indent.push(indent.len());
+        // Print the level, followed by a collen, followed 'level' spaces,
+        // followed by the offset (with a sign) a tab, and the type and function name
+        let indent = format!("{level}:{empty:level$}{offset:+}:        ",
+            level = self.debug_stack.len(),
+            empty = "",
+            offset = self.current_pointer - *self.debug_stack.last().unwrap_or(&self.current_pointer));
+        self.debug_indent.push(indent.len());
 
-            trace!("{}{type_name}::{func_name}",
-                indent, type_name = type_name, func_name = func_name);
-            self.debug_stack.push(self.current_pointer);
+        trace!("{}{type_name}::{func_name}",
+            indent, type_name = type_name, func_name = func_name);
+        self.debug_stack.push(self.current_pointer);
 
-            //self.file.write_fmt(format_args!(" /*{}::{}*/ ", type_name, func_name)).unwrap();
-        });
+        //self.file.write_fmt(format_args!(" /*{}::{}*/ ", type_name, func_name)).unwrap();
     }
 
     // Set the current position to be returned by current_position
@@ -465,6 +484,7 @@ impl<W: Write> Dumper for AsmDumper<W> {
 }
 
 // Returns the range of elements in the map that overlaps with [start, end)
+// Only used to check invariants in debug mode
 fn get_overlap<'a, W: Write>(start: Address, end: Address, map: &'a mut BTreeMap<Address, ObjectInfo<W>>)
                       -> RangeMut<'a, Address, ObjectInfo<W>> {
 
