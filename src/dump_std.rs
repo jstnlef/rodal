@@ -3,12 +3,14 @@ use super::*;
 use std;
 
 // are referencing the types declared here and not the real std types
-rodal_pointer!(['a, T: ?Sized] &'a T = *T);
-rodal_pointer!(['a, T: ?Sized] &'a mut T = *T);
-rodal_pointer!([T: ?Sized] *const T = *T);
-rodal_pointer!([T: ?Sized] * mut T = *T);
+rodal_pointer!(['a, T] &'a T = *T);
+rodal_pointer!(['a, T] &'a mut T = *T);
+rodal_pointer!([T] *const T = *T);
+rodal_pointer!([T] * mut T = *T);
 rodal_pointer!([T] std::sync::atomic::AtomicPtr<T> = *T);
-rodal_object_reference!([T: ?Sized + Dump] std::boxed::Box<T> = &T);
+
+rodal_object_reference!([T: Dump] std::boxed::Box<T> = &T);
+rodal_object!([T: Dump] std::boxed::Box<[T]> = Repr<T>);
 
 rodal_value!(std::sync::atomic::AtomicBool);
 rodal_value!(std::sync::atomic::AtomicIsize);
@@ -29,8 +31,16 @@ rodal_value!(usize);
 rodal_value!(f32);
 rodal_value!(f64);
 rodal_value!(char);
-rodal_enum!([T: Dump] std::option::Option<T> {None, (Some: val)});
-
+//rodal_enum!([T: Dump] std::option::Option<T>{None, (Some: val)});
+unsafe impl<T: Dump> Dump for std::option::Option<T> {
+    fn dump<D: ?Sized + Dumper>(&self, dumper: &mut D) {
+        dumper.debug_record("std::option::Option<T>", "dump");
+        match self {
+            &Some(ref val) => dumper.dump_object_here(val),
+            &None => dumper.dump_value(self)
+        }
+    }
+}
 // These definitions are copied from the standard library
 // This is neccesary so we can use private fields, and types
 // that are unstable, by making copies whith identical layouts
@@ -49,26 +59,30 @@ impl<T> Unique<T> {
     pub fn clone(&self) -> Unique<T> { unsafe{std::mem::transmute_copy(self)} }
     pub fn as_ref_mut(&mut self) ->&mut &T { unsafe{std::mem::transmute(self)} }
     pub fn as_ref(&self) ->&&T { unsafe{std::mem::transmute(self)} }
-    pub fn as_ptr_mut(&mut self) ->&mut *mut T { unsafe{std::mem::transmute(self)} }
-    pub fn as_ptr(&self) ->& *const T { unsafe{std::mem::transmute(self)} }
+    pub fn as_ptr_mut(&mut self) ->*mut T { unsafe{std::mem::transmute_copy(self)} }
+    pub fn as_ptr(&self) -> *const T { unsafe{std::mem::transmute_copy(self)} }
 }
 
-rodal_object_reference!([T: ?Sized + Dump] (Unique<T>) = &T);
+rodal_object_reference!([T: Dump] (Unique<T>) = &T);
+rodal_object!([T: Dump] Unique<[T]> = Repr<T>);
 
 /// core::ptr (libcore/ptr.rs)
 struct Shared<T: ?Sized> { pub pointer: NonZero<*const T>, _marker: std::marker::PhantomData<T> }
-rodal_object_reference!([T: ?Sized + Dump] Shared<T> = &T);
+rodal_object_reference!([T: Dump] Shared<T> = &T);
+rodal_object!([T: Dump] Shared<[T]> = Repr<T>);
 
 /// collections::vec (libcollections/vec.rs)
 pub struct Vec<T> { buf: RawVec<T>, pub len: usize }
+/// alloc::raw_vec (liballoc/rawvec.rs)
+struct RawVec<T> { pub ptr: Unique<T>, pub cap: usize }
 unsafe impl<T: Dump> Dump for std::vec::Vec<T> {
     fn dump<D: ?Sized + Dumper>(&self, dumper: &mut D) {
-        trace!("\t{}: std::vec::Vec<T>::dump(dumper)", super::Address::new(self));
+        dumper.debug_record("std::vec::Vec<T>", "dump");
 
         // Transmute to the fake_std version so we can access private fields
         let fake_self: &Vec<T> = unsafe{std::mem::transmute(self)};
 
-        if std::mem::size_of::<T>() == 0 {
+        if std::mem::size_of::<T>()*fake_self.buf.cap == 0 {
             // Dosn't point to any real memory, so just dump a raw value
             dumper.dump_value(&fake_self.buf.ptr);
         } else {
@@ -78,7 +92,6 @@ unsafe impl<T: Dump> Dump for std::vec::Vec<T> {
                 unsafe { std::mem::transmute::<fn(&Vec<T>, &mut D), DumpFunction<D>>(Vec::<T>::dump_contents) },
                 *fake_self.buf.ptr.as_ref(), // Where to actually dump the data
                 std::mem::size_of::<T>() * fake_self.buf.cap, std::mem::align_of::<T>());
-
             dumper.dump_reference(fake_self.buf.ptr.as_ref());
         }
 
@@ -88,29 +101,26 @@ unsafe impl<T: Dump> Dump for std::vec::Vec<T> {
     }
 }
 impl <T: Dump> Vec<T> {
-    fn dump_contents<D: ?Sized + Dumper>(&self, dumper: &mut D) {
-        let pos = super::Address::new(self.buf.ptr.as_ref());
-        trace!("\t{}: std::vec::Vec<T>::dump_contents({}, dumper)", pos, super::Address::new(self));
-        // Dump each element of the vector
-        for i in 0..self.len {
-            unsafe{(*self.buf.ptr.as_ptr().offset(i as isize)).dump(dumper)}
+    fn dump_contents<D: ? Sized + Dumper>(&self, dumper: &mut D) {
+        dumper.debug_record("std::vec::Vec<T>", "dump_contents");
+        let real_self: &std::vec::Vec<T> = unsafe{mem::transmute(self)};
+        dumper.set_position(Address::from_ptr(self.buf.ptr.as_ptr()));
+        for val in real_self {
+            dumper.dump_object(val);
         }
     }
 }
-/// alloc::raw_vec (liballoc/rawvec.rs)
-struct RawVec<T> { pub ptr: Unique<T>, pub cap: usize }
-
 //collections::string (src/libcollections/string.rs)
 pub struct String { pub vec: std::vec::Vec<u8> }
 rodal_struct!(std::string::String{vec} = String);
 
 // alloc::arc (liballoc/arc.rs)
 pub struct Arc<T: ?Sized> { ptr: Shared<ArcInner<T>>, }
-rodal_struct!([T: ?Sized + Dump] std::sync::Arc<T>{ptr} = Arc<T>);
+rodal_struct!([T: Dump] std::sync::Arc<T>{ptr} = Arc<T>);
 
 // alloc::arc (liballoc/arc.rs)
 struct ArcInner<T: ?Sized> { strong: std::sync::atomic::AtomicUsize, weak: std::sync::atomic::AtomicUsize, data: T, }
-rodal_struct!([T: ?Sized + Dump] ArcInner<T>{strong, weak, data});
+rodal_struct!([T: Dump] ArcInner<T>{strong, weak, data});
 
 // std::sys::poision (libstd/syscommon/poison.rs)
 struct Flag { pub failed: std::sync::atomic::AtomicBool }
@@ -129,7 +139,7 @@ pub struct RwLock<T: ?Sized> {
 // Acquires a read lock on it's contents before it dumps
 unsafe impl<T: ?Sized + Dump> Dump for std::sync::RwLock<T> {
     fn dump<D: ?Sized + Dumper>(&self, dumper: &mut D) {
-        trace!("\t{}:std::sync::RwLock<T>::dump", super::Address::new(self));
+        dumper.debug_record("std::sync::RwLock<T>", "dump");
         use std::ops::Deref;
         // Acquire a read lock to self (just so no one tries to modify the contents whilst we try and dump it)
         let lock = self.read().unwrap();
@@ -177,7 +187,7 @@ mod sys {
 //pub struct sys::RWLock { pub inner: super::UnsafeCell<SRWLOCK> }
 unsafe impl Dump for sys::RWLock {
     fn dump<D: ?Sized + Dumper>(&self, dumper: &mut D) {
-        trace!("\t{}: sys::RWLock::dump", super::Address::new(self));
+        dumper.debug_record("sys::RWLock", "dump");
 
         // Create a new std::sync::RwLock, and dump its value of inner
         // (so that when we load the dump the RwLock will have it's initial state)
@@ -202,7 +212,7 @@ pub struct HashMap<K, V, S = RandomState> {
 unsafe impl<K: Eq + std::hash::Hash + Dump, V: Dump, S: std::hash::BuildHasher + Dump> Dump
 for std::collections::HashMap<K, V, S> {
     fn dump<D: ?Sized + Dumper>(&self, dumper: &mut D) {
-        trace!("\t{}: std::collections::HashMap<K, V, S>::dump(dumper)", super::Address::new(self));
+        dumper.debug_record("std::collections::HashMap<K, V, S>", "dump");
         // Transmute to the fake_std version so we can access private fields
         let fake_self: &HashMap<K, V, S> = unsafe{std::mem::transmute(self)};
 
@@ -244,11 +254,11 @@ for std::collections::HashMap<K, V, S> {
 impl<K: Eq + std::hash::Hash + Dump, V: Dump, S: std::hash::BuildHasher + Dump>
 HashMap<K, V, S> {
     fn dump_contents<D: ?Sized + Dumper>(&self, dumper: &mut D) {
-        let pos = super::Address::new(unsafe{&*self.table.hashes.ptr()});
-        trace!("\t{}: std::collections::HashMap<K, V, S>::dump_contents({}, dumper)", pos, super::Address::new(self));
-
+        dumper.debug_record("std::collections::HashMap<K, V, S>", "dump_contents");
+        let real_pos = unsafe{&*self.table.hashes.ptr()};
+        dumper.set_position(Address::new(real_pos));
         // Dump the stored hashes
-        dumper.dump_value_sized(pos.to_ref::<HashUint>(), self.table.capacity()*std::mem::size_of::<HashUint>());
+        dumper.dump_value_sized(real_pos, self.table.capacity()*std::mem::size_of::<HashUint>());
 
         // Create a list to hold the positions and dump functions of the tables contents
         // (in case iteration dosn't occur in memory order)
@@ -274,7 +284,7 @@ struct TaggedHashUintPtr(Unique<HashUint>);
 // and it will point within the tables memory, so the Dumper will store it properly
 rodal_pointer!(TaggedHashUintPtr = *HashUint);
 impl TaggedHashUintPtr {
-    fn ptr(&self) -> *mut HashUint { (*self.0.as_ptr() as usize & !1) as *mut HashUint }
+    fn ptr(&self) -> *mut HashUint { (self.0.as_ptr() as usize & !1) as *mut HashUint }
 }
 type HashUint = usize;
 struct RawTable<K, V> {
@@ -285,4 +295,101 @@ struct RawTable<K, V> {
 }
 impl<K, V> RawTable<K, V> {
     fn capacity(&self) -> usize { self.capacity_mask.wrapping_add(1) }
+}
+
+// Slices...
+
+//core::slice (src/libcore/slice/mod.rs)
+#[repr(C)] // Repr<T> has the same layout as &[T]
+struct Repr<T> {
+    pub data: *const T,
+    pub len: usize,
+}
+unsafe impl<T: Dump> Dump for Repr<T> {
+    fn dump<D: ?Sized + Dumper>(&self, dumper: &mut D) {
+        dumper.debug_record("Repr<T>", "dump");
+        if std::mem::size_of::<T>()*self.len == 0 {
+            // Dosn't point to any real memory, so just dump a raw value
+            dumper.dump_value(&self.data);
+        } else {
+            dumper.reference_object_function_sized_position(
+                self, // the argument to pass to the dump function
+                // The function to use to dump the contents
+                unsafe { std::mem::transmute::<fn(&Repr<T>, &mut D), DumpFunction<D>>(Repr::<T>::dump_contents) },
+                unsafe{self.data.as_ref().unwrap()}, // Where to actually dump the data
+                std::mem::size_of::<T>() *self.len, std::mem::align_of::<T>());
+
+            dumper.dump_reference(unsafe{mem::transmute::<&*const T, &&T>(&self.data)});
+        }
+
+        dumper.dump_object(&self.len);
+    }
+}
+impl <T: Dump> Repr<T> {
+    fn dump_contents<D: ?Sized + Dumper>(&self, dumper: &mut D) {
+        dumper.debug_record("Repr<T>", "dump_contents");
+        let real_self: &&[T] = unsafe{mem::transmute(self)};
+
+        dumper.set_position(Address::from_ptr(self.data));
+        // Dump the contents of the slice
+        for val in *real_self {
+            dumper.dump_object(val)
+        }
+    }
+}
+
+
+rodal_struct!(['a, T] &'a [T]{data, len} = Repr<T>);
+rodal_struct!(['a, T] &'a mut[T]{data, len} = Repr<T>);
+rodal_struct!([T] *const[T]{data, len} = Repr<T>);
+rodal_struct!([T] *mut[T]{data, len} = Repr<T>);
+
+// Use new() to make a new fake arc and you can dump that
+// You can then reload a pointer to it as a real Arc
+pub struct FakeArc<'a, T: 'a> {
+    inner: &'a T,
+}
+//struct ArcInner<T: ?Sized> { strong: std::sync::atomic::AtomicUsize, weak: std::sync::atomic::AtomicUsize, data: T, }
+impl<'a, T: Dump> FakeArc<'a, T> {
+    pub fn new(val: &'a T) -> FakeArc<'a, T> {
+        FakeArc::<'a, T> {
+            inner: val
+        }
+    }
+
+    // Dump an ArcInner
+    fn dump_inner<D: ?Sized + Dumper>(&self, dumper: &mut D) {
+        dumper.debug_record("FakeArc<'a, T>", "dump_inner");
+
+        let start = dumper.current_position();
+        // Dump the default strong value of 1
+        dumper.dump_padding((start + offset_of!(ArcInner<T> => strong).get_byte_offset()).to_ref::<()>());
+        dumper.dump_object_here(&std::sync::atomic::AtomicUsize::new(1));
+
+        // Dump the default weak value of 1
+        dumper.dump_padding((start + offset_of!(ArcInner<T> => weak).get_byte_offset()).to_ref::<()>());
+        dumper.dump_object_here(&std::sync::atomic::AtomicUsize::new(1));
+
+        // Dump the containing data
+        dumper.dump_padding((start + offset_of!(ArcInner<T> => data).get_byte_offset()).to_ref::<()>());
+        dumper.dump_object_here(self.inner);
+    }
+}
+unsafe impl<'a, T: Dump> Dump for FakeArc<'a, T> {
+    fn dump<D: ?Sized + Dumper>(&self, dumper: &mut D) {
+        dumper.debug_record("FakeArc<'a, T>", "dump");
+
+        // Where to dump our fake ArcInner
+        // (make it include the real position of inner so that references to inside of inner will be correctly preserved)
+        let fake_inner = (Address::new(self.inner) - offset_of!(ArcInner<T> => data).get_byte_offset()).to_ref::<ArcInner<T>>();
+
+        dumper.reference_object_function_sized_position(
+            self, // the argument to pass to the dump function
+            // The function to use to dump the contents
+            unsafe { std::mem::transmute::<fn(&FakeArc<'a, T>, &mut D), DumpFunction<D>>(FakeArc::<'a, T>::dump_inner) },
+            fake_inner, std::mem::size_of::<ArcInner<T>>(), std::mem::align_of::<ArcInner<T>>());
+
+        dumper.dump_padding(&self.inner);
+        dumper.dump_reference_here(&fake_inner);
+    }
 }

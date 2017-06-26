@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::io::Write;
 use std::fmt;
 use std::collections::btree_map::RangeMut;
@@ -6,7 +6,6 @@ use std::mem;
 use std::collections::Bound;
 use num::integer::lcm;
 use super::*;
-use std::iter::FromIterator;
 
 #[derive(Clone, Default)]
 struct AsmLabel {
@@ -82,8 +81,12 @@ enum AsmDirective {
 pub struct AsmDumper<W: Write>
 {
     file: W,
-    current_pointer: Address, // This is the pointer into the output we are dumping
     current_directive: AsmDirective,
+
+    current_pointer: Address, // This is the pointer into the output we are dumping
+    position_offset: isize, // The offset from current_pointer to tell objects where we are
+    debug_stack: Vec<Address>, // For debugging only
+    debug_indent: Vec<usize>, // How much to indent debugging info by
 
     /// Objects we've already dumped (or started to dump)
     dumped_objects: BTreeMap<Address, ObjectInfo<W>>,
@@ -93,7 +96,7 @@ pub struct AsmDumper<W: Write>
 
     /// References that haven't been resolved to be relative to a complete object yet
     pending_references: BTreeSet<Address>,
-    tags: BTreeMap<usize, Vec<*const ()>>,
+    tags: HashMap<usize, Vec<*const ()>>,
 }
 
 impl<W: Write> AsmDumper<W> {
@@ -101,12 +104,15 @@ impl<W: Write> AsmDumper<W> {
         file.write_all(b"#START RODAL DUMP\n\t.data\n").unwrap();
         AsmDumper::<W> {
             file: file,
-            current_pointer: Address::null(),
             current_directive: AsmDirective::Other,
+            current_pointer: Address::null(),
+            position_offset: 0,
+            debug_stack: Vec::new(),
+            debug_indent: Vec::new(),
             dumped_objects: BTreeMap::new(),
             pending_objects: BTreeMap::new(),
             pending_references: BTreeSet::new(),
-            tags: BTreeMap::new()
+            tags: HashMap::new()
         }
     }
     pub fn dump_sized<T: ?Sized + Dump>(&mut self, name: &str, value: &T, size: usize, alignment: usize) -> &mut Self
@@ -119,19 +125,30 @@ impl<W: Write> AsmDumper<W> {
 
         self.current_pointer = Address::new(value);
 
-        trace!("dumping {} [{}, {}):", label.base.clone(), start, start + size);
+        debug_only!({
+            trace!("");
+            trace!("dumping {} [{}, {:+}):", label.base.clone(), start, size)});
         self.write_global(label.clone());
         self.write_type_object(label.clone());
         self.write_size_align(size, alignment);
         self.write_label_declaration(label.clone());
-        self.dumped_objects.insert(start, ObjectInfo::<W>::new(value, Self::get_dump_function::<T>(), value, size, alignment, label.clone()));
-        value.dump::<Self>(self);
+        let dump_function = Self::get_dump_function::<T>();
+        self.dumped_objects.insert(start, ObjectInfo::<W>::new(value, dump_function, value, size, alignment, label.clone()));
+        self.dump_object_function_here(value, dump_function);
         self.advance_position(start + size); // Add any neccesary padding
         self.write_size(label);
         self
         // We finished dumping this root object
     }
 
+    pub fn dump_tags(&mut self) {
+        // This is totally undefined bheaviour
+        // as this creates a immutable borrow to self (the reference to self.tags)
+        // and we then create a muttable borrow (to self in the call to self.dump)
+        let tags = Address::new(&self.tags);
+        self.dump("RODAL_TAGS", tags.to_ref::<HashMap<usize, Vec<*const ()>>>());
+        self.finish();
+    }
     pub fn finish(&mut self) {
         //trace!("{:?}: finish()", self.current_pointer);
 
@@ -144,20 +161,15 @@ impl<W: Write> AsmDumper<W> {
             self.dumped_objects.insert(start, value.clone());
             self.current_pointer = start;
 
-            trace!("dumping {} [{}, {}):", value.label.base.clone(), start, start + value.size);
+            debug_only!({
+                trace!("");
+                trace!("dumping {} [{}, {:+}):", value.label.base.clone(), start, value.size)});
             self.write_type_object(value.label.clone());
             self.write_size_align(value.size, value.alignment);
             self.write_label_declaration(value.label.clone());
             self.dump_object_function_here(value.value.to_ref::<()>(), value.dump);
             self.advance_position(start + value.size);
             self.write_size(value.label);
-        }
-
-        // Dump the tags list (if there is one)
-        let tags = self.tags.clone(); // Copy tags, so the borrow checker will let me mutate self
-        if !tags.is_empty() {
-            let vec = Vec::from_iter(tags.iter());
-            self.dump("RODAL_TAGS", &vec);
         }
 
         assert!(self.pending_references.is_empty()); // We should've dumped all referenced objects by now
@@ -199,9 +211,9 @@ impl<W: Write> AsmDumper<W> {
 
         match value {
             // Some characters need to be escaped
-            0x0a => self.file.write_all(b"\\\n").unwrap(),// Linefead
-            0x5c => self.file.write_all(b"\\\\").unwrap(), // Backslash
-            0x22 => self.file.write_all(b"\\\"").unwrap(),// Couble Quoutes
+            0x0a => self.file.write_all(br#"\n"#).unwrap(),// Linefead
+            0x5c => self.file.write_all(br#"\\"#).unwrap(), // Backslash
+            0x22 => self.file.write_all(br#"\""#).unwrap(),// Couble Quoutes
             _ => self.file.write_all(&[value]).unwrap(),
         }
     }
@@ -279,7 +291,7 @@ impl<W: Write> AsmDumper<W> {
         //trace!("{:?}: advance_position({:?})", self.current_pointer, address);
 
         let padding = address - self.current_pointer;
-        assert!(padding >= 0);
+        assert!(padding >= 0, "can't advance from {} to {}", self.current_pointer, address);
         if padding != 0 {
             self.write_skip(padding as usize);
         }
@@ -291,33 +303,45 @@ impl<W: Write> AsmDumper<W> {
 // WARNING: Never dump an object of zero size (i.e. such an object should have a trivial dump method)
 impl<W: Write> Dumper for AsmDumper<W> {
     fn tag_reference<T: ?Sized>(&mut self, value: &T, tag: usize) {
-        //trace!("{:?}: tag_reference({:?}, {})", self.current_pointer, Address::new(value), tag);
-        let value = value as *const T as *const();
+        //trace!("{:?}: TAG_reference({:?}, {})", self.current_pointer, Address::new(value), tag);
+        let value = Address::new(value).to_ptr::<()>();
 
-        match self.tags.get_mut(&tag) {
-            Some(tag_list) => return tag_list.push(value),
-            None => { }
+        match &mut self.tags.get_mut(&tag) {
+            &mut Some(ref mut vec) => { return vec.push(value); } // Add to the existing list
+            &mut None => { }
         }
-
-        self.tags.insert(tag, vec![value]);
+        self.tags.insert(tag, vec![value]); // Add a new list
     }
     /// Record the given complete object as needing to be dumped (because it is referenced)
     fn reference_object_function_sized_position<T: ?Sized, P: ?Sized>(&mut self, value: &T, dump: DumpFunction<Self>, position: &P, size: usize, alignment: usize) {
         // Objects with zero size should never be referenced
+        // If they could be, then there could be ambiguouty if a complete object contains this address,
+        // and we have a pointer with the value, does it point to this object of zero size, or the other overlaping one?
+        // Or should we never allow pointers to them? Since there is technically no byte within the bounds of the object
+        // yet the object has an address...
+        // Just don't allow them, it makes things simpler.
         assert!(size != 0 && alignment != 0);
         let start = Address::new(position);
+        trace!("{empty:indent$} =>{location}",
+            empty = "",
+            indent = *self.debug_indent.last().unwrap(),
+            location = start);
+
         //trace!("{:?}: reference_object_sized_position({}, {}, {}, {})", self.current_pointer, Address::new(value), start, size, alignment);
 
         // We already have a record for this object
         if self.dumped_objects.contains_key(&start) || self.pending_objects.contains_key(&start) {
-            if cfg!(debug_assertions) {
+            // Do nothing
+            debug_only!({
                 let object = if self.dumped_objects.contains_key(&start) {
                     self.dumped_objects.get(&start).unwrap()
                 } else { // self.pending_objects.contains_key(&start)
                     self.pending_objects.get(&start).unwrap()
                 };
-                assert!(object.size == size && object.alignment == alignment);
-            }
+                debug_assert!(object.size == size && object.alignment == alignment,
+                    "conflicting layouts for object [{}], got size = {} and {}, and alignment = {} and {}",
+                    start, object.size, size, object.alignment, alignment);
+            });
         } else {
             // This is the first time we've called reference_object on this pointer
             let label = AsmLabel::new(format!("object_{}", start));
@@ -341,8 +365,10 @@ impl<W: Write> Dumper for AsmDumper<W> {
 
             // Value is suposed to be a new complete object, so verify it does
             // not overlap with any other complete objects
-            debug_assert!(get_overlap(start, start+size, &mut self.dumped_objects).count() == 0);
-            debug_assert!(get_overlap(start, start+size, &mut self.pending_objects).count() == 0);
+            debug_assert!(get_overlap(start, start+size, &mut self.dumped_objects).count() == 0,
+                "the object range [{}, {}) overlaps with a complete object", start, start+size);
+            debug_assert!(get_overlap(start, start+size, &mut self.pending_objects).count() == 0,
+                "the object range [{}, {}) overlaps with a complete object", start, start+size);
 
             self.pending_objects.insert(start, ObjectInfo::new(value, dump, position, size, alignment, label));
         }
@@ -350,6 +376,11 @@ impl<W: Write> Dumper for AsmDumper<W> {
 
     fn dump_reference_here<T: ?Sized>(&mut self, value: &&T) {
         let ptr = Address::new(*value);
+        trace!("{empty:indent$} ->{location}",
+            empty = "",
+            indent = *self.debug_indent.last().unwrap(),
+            location = ptr);
+
         //trace!("{:?}: dump_reference_here({:?} = &{})", self.current_pointer, Address::new(value), ptr);
 
         // Look for a recorded complete object containg this,..
@@ -394,14 +425,42 @@ impl<W: Write> Dumper for AsmDumper<W> {
         //trace!("+ {} -> {:?}", size, self.current_pointer);
     }
 
-    fn current_position(&self) -> Address {
-        self.current_pointer
+    fn debug_record(&mut self, type_name: &str, func_name: &str) {
+        debug_only!({
+            // Print the level, followed by a collen, followed 'level' spaces,
+            // followed by the offset (with a sign) a tab, and the type and function name
+            let indent = format!("{level}:{empty:level$}{offset:+}:        ",
+                level = self.debug_stack.len(),
+                empty = "",
+                offset = self.current_pointer - *self.debug_stack.last().unwrap_or(&self.current_pointer));
+            self.debug_indent.push(indent.len());
+
+            trace!("{}{type_name}::{func_name}",
+                indent, type_name = type_name, func_name = func_name);
+            self.debug_stack.push(self.current_pointer);
+
+            //self.file.write_fmt(format_args!(" /*{}::{}*/ ", type_name, func_name)).unwrap();
+        });
     }
 
-    fn dump_object_function_here(&mut self, value: &(), dump: DumpFunction<Self>) {
-        let start = Address::new(value);
-        //trace!("{:?}: dump_object_function_here({:?}, {})", self.current_pointer, start, unsafe{mem::transmute::<DumpFunction<Self>, Address>(dump)});
-        (dump)(value, self);
+    // Set the current position to be returned by current_position
+    // (dosn't actually effect the internal pointer, used to tell other objects where they should think they are)
+    fn set_position(&mut self, new_position: Address) {
+        self.position_offset = new_position - self.current_pointer;
+        assert!(self.current_position() == new_position);
+    }
+    fn current_position(&self) -> Address { self.current_pointer + self.position_offset }
+    // CALL This whenever we execute a dump function...
+    fn dump_object_function_here<T: ?Sized>(&mut self, value: &T, dump: DumpFunction<Self>) {
+        let old_offset = self.position_offset;
+        let value = Address::new(value);
+        self.set_position(value);
+
+        //trace!("{:?}: dump_object_function_here({:?}, {})", self.current_pointer, Address::new(value), unsafe{mem::transmute::<DumpFunction<Self>, Address>(dump)});
+        (dump)(value.to_ref::<()>(), self);
+        debug_only!({self.debug_stack.pop(); self.debug_indent.pop()});
+        //debug_only!();
+        self.position_offset = old_offset;
     }
 }
 

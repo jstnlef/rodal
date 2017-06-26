@@ -1,0 +1,13 @@
+[package]
+name = "rodal_alloc"
+version = "0.0.1"
+authors = [ "Your name <you@example.com>" ]
+include = ["Cargo.toml", "src/**/*.rs"]
+
+[dependencies]
+libc = "*"
+lazy_static = "*"
+rodal = { version = "*", path = "../../rodal" }
+
+[lib]
+crate-type = ["staticlib", "dylib"]

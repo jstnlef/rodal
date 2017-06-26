@@ -26,6 +26,8 @@ rodal_unordered_struct!(GEN ty '{' $(field),* '}' SOURCE)
 	(this is less efficient than rodal_struct! as it builds a BTreeMap)
 
 rodal_enum!(GEN ty '{' $(variant),* '}' SOURCE)
+    Unlike the other macros, ty must be a single identifier.
+
 	dumps an enum (will through unimplemented! for unspecified variants)
 	variant can either be:
 		unit
@@ -49,6 +51,17 @@ rodal_tuple_impl!($(n: T),+)
 
 */
 use std;
+
+#[macro_export]
+#[cfg(debug_assertions)]
+macro_rules! debug_only {
+    ($($args:tt)*) => [ $($args)* ];
+}
+#[macro_export]
+#[cfg(not(debug_assertions))]
+macro_rules! debug_only {
+    ($($args:tt)*) => [ ];
+}
 
 #[macro_export]
 macro_rules! rodal_value {
@@ -116,29 +129,29 @@ macro_rules! rodal_unordered_struct {
 
 #[macro_export]
 macro_rules! rodal_enum {
-    ([$($gen:tt)*] $ty:ty {$($variant:tt),*} = $source:ty) => [ rodal___dump_impl!{(fake_self dumper D) [$($gen)*]$ty {
+    ([$($gen:tt)*] $ty:ident {$($variant:tt),*} = $source:ty) => [ rodal___dump_impl!{(fake_self dumper D) [$($gen)*] $ty {
+        use self::$ty::*;
         match fake_self {
             $(rodal___variant_pattern!($variant) => {rodal___variant_impl!{(fake_self dumper D) $variant}})*
             _ => unimplemented!()
         }
     } = $source} ];
-
-    ([$($gen:tt)*] $ty:ty {$($variant:tt),*}) => [ rodal_enum!{[$($gen)*]$ty {$($variant),*} = $ty} ];
-    ($ty:ty {$($variant:tt),*} = $source:ty) => [ rodal_enum!{[] $ty {$($variant),*} = $source} ];
-    ($ty:ty {$($variant:tt),*}) => [ rodal_enum!{[] $ty {$($variant),*} = $ty} ];
+    ([$($gen:tt)*] $ty:ident {$($variant:tt),*}) => [ rodal_enum!{[$($gen)*]$ty {$($variant),*} = $ty} ];
+    ($ty:ident {$($variant:tt),*} = $source:ty) => [ rodal_enum!{[] $ty {$($variant),*} = $source} ];
+    ($ty:ident {$($variant:tt),*}) => [ rodal_enum!{[] $ty {$($variant),*} = $ty} ];
 }
 #[macro_export]
 macro_rules! rodal_unordered_enum {
-    ([$($gen:tt)*] $ty:ty {$($variant:tt),*} = $source:ty) => [ rodal___dump_impl!{(fake_self dumper D) [$($gen)*]$ty {
+    ([$($gen:tt)*] $ty:ident {$($variant:tt),*} = $source:ty) => [ rodal___dump_impl!{(fake_self dumper D) [$($gen)*] $ty {
+        use self::$ty::*;
         match fake_self {
             $(rodal___variant_pattern!($variant) => {rodal___unordered_variant_impl!{(fake_self dumper D) $variant}})*
             _ => unimplemented!()
         }
     } = $source} ];
-
-    ([$($gen:tt)*] $ty:ty {$($variant:tt),*}) => [ rodal_enum!{[$($gen)*]$ty {$($variant),*} = $ty} ];
-    ($ty:ty {$($variant:tt),*} = $source:ty) => [ rodal_enum!{[] $ty {$($variant),*} = $source} ];
-    ($ty:ty {$($variant:tt),*}) => [ rodal_enum!{[] $ty {$($variant),*} = $ty} ];
+    ([$($gen:tt)*] $ty:ident {$($variant:tt),*}) => [ rodal_unordered_enum!{[$($gen)*]$ty {$($variant),*} = $ty} ];
+    ($ty:ident {$($variant:tt),*} = $source:ty) => [ rodal_unordered_enum!{[] $ty {$($variant),*} = $source} ];
+    ($ty:ident {$($variant:tt),*}) => [ rodal_unordered_enum!{[] $ty {$($variant),*} = $ty} ];
 }
 
 #[macro_export]
@@ -198,9 +211,10 @@ macro_rules! rodal___dump_impl {
     (($fake_self:ident $dumper:ident $D:ident) [$($gen:tt)*] $ty:ty $body:block = $source:tt) => [
         #[allow(unreachable_patterns)]
         #[allow(unused_variables)]
+        #[allow(unused_imports)]
         unsafe impl <$($gen)*> $crate::Dump for $ty {
             fn dump<$D: ?std::marker::Sized + $crate::Dumper>(&self, $dumper: &mut $D) {
-                trace!("\t{}: {}::dump(dumper)", $crate::Address::new(self), stringify!($ty));
+                $dumper.debug_record(stringify!($ty), "dump");
                 let $fake_self: &($source) = unsafe{std::mem::transmute(self)};
                 $body
             }

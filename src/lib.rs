@@ -3,15 +3,19 @@ extern crate num;
 
 #[macro_use]
 extern crate log;
+#[macro_use]
+extern crate field_offset;
 
 #[macro_use]
 mod macros;
 mod asm_dumper;
+mod asm_loader;
 mod address;
 mod dump_std;
 pub use asm_dumper::*;
+pub use asm_loader::*;
 pub use address::*;
-
+pub use dump_std::FakeArc;
 
 pub unsafe trait Dump {
     /// Dump this object into the given RODAL Dumper
@@ -29,6 +33,11 @@ use std::collections::BTreeMap;
 }
 pub type DumpFunction<D: Dumper> = fn(&(), &mut D);
 pub trait Dumper {
+    // For debugging purposes, records that we are in the dump function 'func_name'
+    // for the type 'type_name'
+    fn debug_record(&mut self, type_name: &str, func_name: &str);
+
+    fn set_position(&mut self, new_position: Address);
     /// Returns the address of the end of the last thing the dumper dumped
     fn current_position(&self) -> Address;
 
@@ -36,8 +45,7 @@ pub trait Dumper {
     #[inline] fn dump_padding<T: ?Sized>(&mut self, target: &T) {
         let current = self.current_position();
         let target = Address::new(target);
-        //trace!("{}: \tdump_padding({})", current, target);
-        assert!(target >= current);
+        assert!(target >= current, "cant move backwards from {} to {}", current, target);
         self.dump_padding_sized((target - current) as usize);
     }
 
@@ -63,7 +71,8 @@ pub trait Dumper {
     }
 
     // Dump the object with the specified function
-    fn dump_object_function_here(&mut self, value: &(), dump: DumpFunction<Self>); // Core function
+    // TODO update to the new signature
+    fn dump_object_function_here<T: ?Sized>(&mut self, value: &T, dump: DumpFunction<Self>); // Core function
     #[inline] fn dump_object_function<T: ?Sized + Dump>(&mut self, value: &T, dump: DumpFunction<Self>) {
         self.dump_padding(value);
         self.dump_object_function_here(as_void_ref(value), dump);
@@ -115,19 +124,19 @@ pub trait Dumper {
     // (since the discriminant is a raw value and needs to be stored, but it may be at the begining or end of the enum)
     #[inline] fn dump_prefix_value_here<T: ?Sized, U: ?Sized>(&mut self, start: &T, end: &U) {
         let distance = Address::new(end) - Address::new(start);
-        assert!(distance >= 0);
+        assert!(distance >= 0, "prefix ends at {} before it starts {}", Address::new(end), Address::new(start));
         self.dump_value_sized_here(start, distance as usize);
     }
     #[inline] fn dump_prefix_value<T: ?Sized>(&mut self, end: &T) {
         let distance = Address::new(end) - self.current_position();
-        assert!(distance >= 0);
+        assert!(distance >= 0, "prefix ends at {} before it starts {}", Address::new(end), self.current_position());
         let start = self.current_position().to_ref::<()>();
         self.dump_value_sized_here(start, distance as usize);
     }
     #[inline] fn dump_suffix_value_sized<T: ?Sized>(&mut self, start: &T, size: usize) {
         let distance = self.current_position() - Address::new(start);
         let end = self.current_position().to_ref::<()>();
-        assert!(distance >= 0);
+        assert!(distance >= 0, "suffix starts at {} after the current position {}", Address::new(start), self.current_position());
         self.dump_value_sized_here(end, size - distance as usize);
     }
     #[inline] fn dump_suffix_value<T>(&mut self, start: &T) {
@@ -151,9 +160,7 @@ impl<D: ?Sized + Dumper> DumpList<D> {
     #[inline] pub fn add<T: ?Sized + Dump>(&mut self, value: &T) { self.add_position(value, value); }
     #[inline] pub fn dump(&mut self, dumper: &mut D) {
         for (position, &(value, dump)) in &self.0 {
-            let current = dumper.current_position();
-            assert!(*position >= current);
-            dumper.dump_padding_sized((*position - current) as usize);
+            dumper.dump_padding(position.to_ref::<()>());
             dumper.dump_object_function_here(value.to_ref::<()>(), dump)
         }
         self.0.clear();

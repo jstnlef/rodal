@@ -6,9 +6,10 @@ include = ["Cargo.toml", "src/**/*.rs"]
 build = "build.rs"
 
 [build-dependencies]
-rustc_version = "0.2.1"
+rustc_version = "*"
 
 [dependencies]
 libc = "0.2.24"
-num = "0.1.39"
-log = "0.3.5"
+num = "*"
+log = "*"
+field-offset = "*"
