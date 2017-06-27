@@ -11,10 +11,12 @@ extern crate field_offset;
 mod macros;
 mod asm_dumper;
 mod asm_loader;
+mod alloc;
 mod address;
 mod dump_std;
 pub use asm_dumper::*;
 pub use asm_loader::*;
+pub use alloc::*;
 pub use address::*;
 pub use dump_std::FakeArc;
 

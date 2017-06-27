@@ -1,7 +1,6 @@
 extern crate libc;
-extern crate rodal;
 use std::mem;
-use rodal::*;
+use super::*;
 use std::sync::atomic::{Ordering, fence};
 
 fn is_rodal_dump(ptr: *const libc::c_void) -> bool {
@@ -29,13 +28,13 @@ pub unsafe extern fn rodal_init_deallocate() {
     fence(Ordering::SeqCst);
 }
 #[no_mangle]
-pub unsafe extern fn free(ptr: *mut libc::c_void) {
+pub unsafe extern fn rodal_free(ptr: *mut libc::c_void) {
     if !is_rodal_dump(ptr) {
         (REAL_FREE.unwrap())(ptr);
     }
 }
 #[no_mangle]
-pub unsafe extern fn realloc(ptr: *mut libc::c_void, new_size: libc::size_t)->*mut libc::c_void {
+pub unsafe extern fn rodal_realloc(ptr: *mut libc::c_void, new_size: libc::size_t)->*mut libc::c_void {
     if is_rodal_dump(ptr) {
         let old_size = *(Address::from_ptr(ptr) - mem::size_of::<libc::size_t>()).to_ref::<usize>();
         if old_size >= new_size {
