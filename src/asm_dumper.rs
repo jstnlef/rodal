@@ -267,7 +267,7 @@ impl<W: Write> AsmDumper<W> {
             }
         }
 
-        self.file.write_fmt(format_args!("{:#02}", value)).unwrap();
+        self.file.write_fmt(format_args!("{:#02x}", value)).unwrap();
         /*match value
             /*// Some characters need to be escaped
             0x0a => self.file.write_all(br#"\n"#).unwrap(),// Linefead
