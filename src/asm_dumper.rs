@@ -120,7 +120,20 @@ pub struct AsmDumper<W: Write>
     pending_references: BTreeSet<Address>,
     tags: HashMap<usize, Vec<*const ()>>,
 }
-
+fn log2(val: usize) -> usize {
+    debug_assert!(val.is_power_of_two());
+    debug_assert!(val != 0);
+    let mut ret = 0;
+    for i in 0..mem::size_of::<usize>()*8 {
+        if val & (1 << i) != 0 {
+            ret = i;
+        }
+    }
+    // WARNING: This will only work for val < 2^31
+    //let ret = (val as f64).log2() as u64;
+    debug_assert!(val == 1 << ret);
+    ret
+}
 impl<W: Write> AsmDumper<W> {
     #[cfg(debug_assertions)]
     pub fn new(mut file: W) -> AsmDumper<W> {
@@ -296,7 +309,7 @@ impl<W: Write> AsmDumper<W> {
         // We need to align to usize as we will store a usize indicating the size of the object
         let alignment = lcm(mem::align_of::<usize>(), alignment);
         self.start_directive(AsmDirective::Other);
-        self.file.write_fmt(format_args!("\t.balign {}\n", alignment)).unwrap();
+        self.file.write_fmt(format_args!("\t.p2align {}\n", log2(alignment))).unwrap();
 
         // Add neccesary padding so that the data for the object is properly aligned
         let padding = alignment - mem::size_of::<usize>();
