@@ -213,7 +213,9 @@ impl<W: Write> AsmDumper<W> {
 
         assert!(self.pending_references.is_empty()); // We should've dumped all referenced objects by now
 
-        // Write a label indicating the size and end of the rodal dump
+        // Write a label indicating the end of the rodal dump
+        self.write_label_declaration("RODAL_END".to_string());
+
         self.file.write_all(b"#END RODAL DUMP\n").unwrap();
     }
 
