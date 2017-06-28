@@ -29,6 +29,11 @@ struct AsmLabel {
 
 impl AsmLabel {
     fn new(name: String) -> AsmLabel {
+        let name = if cfg!(target_os = "macos") {
+            "_".to_string() + &name
+        } else {
+            name
+        };
         AsmLabel {
             base: name,
             offset: 0
@@ -256,7 +261,9 @@ impl<W: Write> AsmDumper<W> {
     fn write_size(&mut self, label: AsmLabel)  {
         assert!(label.offset == 0);
         self.start_directive(AsmDirective::Other);
-        self.file.write_fmt(format_args!("\t.size {}, .-{}\n\n", label.base, label.base)).unwrap();
+        if cfg!(target_os = "linux") { // Not suported on macosx
+            self.file.write_fmt(format_args!("\t.size {}, .-{}\n\n", label.base, label.base)).unwrap();
+        }
     }
 
     #[inline]
@@ -310,7 +317,9 @@ impl<W: Write> AsmDumper<W> {
     fn write_type_object(&mut self, label: AsmLabel) {
         assert!(label.offset == 0);
         self.start_directive(AsmDirective::Other);
-        self.file.write_fmt(format_args!("\t.type {}, %object\n", label.base)).unwrap();
+        if cfg!(target_os = "linux") { // Not suported on macosx
+            self.file.write_fmt(format_args!("\t.type {}, %object\n", label.base)).unwrap();
+        }
     }
     #[inline]
     fn write_label_declaration(&mut self, label: AsmLabel) {
