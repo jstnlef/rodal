@@ -92,7 +92,7 @@ const POINTER_DIRECTIVE: &str = ".quad";
 const POINTER_DIRECTIVE: &str = ".xword";
 
 enum AsmDirective {
-    String,     // Whe are inside a .ascii
+    Byte,       // Whe are inside a .byte
     Ptr,        // We are inside a POINTER_DIRECTIVE 
     Other       // we aran't inside either
 }
@@ -119,20 +119,6 @@ pub struct AsmDumper<W: Write>
     /// References that haven't been resolved to be relative to a complete object yet
     pending_references: BTreeSet<Address>,
     tags: HashMap<usize, Vec<*const ()>>,
-}
-fn log2(val: usize) -> usize {
-    debug_assert!(val.is_power_of_two());
-    debug_assert!(val != 0);
-    let mut ret = 0;
-    for i in 0..mem::size_of::<usize>()*8 {
-        if val & (1 << i) != 0 {
-            ret = i;
-        }
-    }
-    // WARNING: This will only work for val < 2^31
-    //let ret = (val as f64).log2() as u64;
-    debug_assert!(val == 1 << ret);
-    ret
 }
 impl<W: Write> AsmDumper<W> {
     #[cfg(debug_assertions)]
@@ -237,8 +223,8 @@ impl<W: Write> AsmDumper<W> {
     #[inline]
     fn start_directive(&mut self, new_directive: AsmDirective) {
         match self.current_directive {
-            //AsmDirective::String => {self.file.write_all(b"\"\n").unwrap();}
-            AsmDirective::String | AsmDirective::Ptr => {self.file.write_all(b"\n").unwrap();}
+            // End the directive with a newline
+            AsmDirective::Byte | AsmDirective::Ptr => {self.file.write_all(b"\n").unwrap();}
             _ => {}
         }
         self.current_directive = new_directive;
@@ -256,25 +242,18 @@ impl<W: Write> AsmDumper<W> {
     #[inline]
     fn write_byte(&mut self, value: u8)  {
         match self.current_directive {
-            // Continue the current string directive
-            AsmDirective::String => {
+            // Continue the current byte directive
+            AsmDirective::Byte => {
                 self.file.write_all(b", ").unwrap();
             },
             _ => {
-                self.start_directive(AsmDirective::String);
-                // Start a new string directive
+                self.start_directive(AsmDirective::Byte);
+                // Start a new byte directive
                 self.file.write_all(b"\t.byte ").unwrap();
             }
         }
 
         self.file.write_fmt(format_args!("{:#02x}", value)).unwrap();
-        /*match value
-            /*// Some characters need to be escaped
-            0x0a => self.file.write_all(br#"\n"#).unwrap(),// Linefead
-            0x5c => self.file.write_all(br#"\\"#).unwrap(), // Backslash
-            0x22 => self.file.write_all(br#"\""#).unwrap(),// Couble Quoutes
-            _ => self.file.write_all(&[value]).unwrap(),*/
-        }*/
     }
 
     #[inline]
@@ -312,7 +291,7 @@ impl<W: Write> AsmDumper<W> {
         // We need to align to usize as we will store a usize indicating the size of the object
         let alignment = lcm(mem::align_of::<usize>(), alignment);
         self.start_directive(AsmDirective::Other);
-        self.file.write_fmt(format_args!("\t.p2align {}\n", log2(alignment))).unwrap();
+        self.file.write_fmt(format_args!("\t.balign {}\n", alignment)).unwrap();
 
         // Add neccesary padding so that the data for the object is properly aligned
         let padding = alignment - mem::size_of::<usize>();
