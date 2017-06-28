@@ -237,8 +237,8 @@ impl<W: Write> AsmDumper<W> {
     #[inline]
     fn start_directive(&mut self, new_directive: AsmDirective) {
         match self.current_directive {
-            AsmDirective::String => {self.file.write_all(b"\"\n").unwrap();}
-            AsmDirective::Ptr => {self.file.write_all(b"\n").unwrap();}
+            //AsmDirective::String => {self.file.write_all(b"\"\n").unwrap();}
+            AsmDirective::String | AsmDirective::Ptr => {self.file.write_all(b"\n").unwrap();}
             _ => {}
         }
         self.current_directive = new_directive;
@@ -257,21 +257,24 @@ impl<W: Write> AsmDumper<W> {
     fn write_byte(&mut self, value: u8)  {
         match self.current_directive {
             // Continue the current string directive
-            AsmDirective::String => {},
+            AsmDirective::String => {
+                self.file.write_all(b", ").unwrap();
+            },
             _ => {
                 self.start_directive(AsmDirective::String);
                 // Start a new string directive
-                self.file.write_all(b"\t.ascii \"").unwrap();
+                self.file.write_all(b"\t.byte ").unwrap();
             }
         }
 
-        match value {
-            // Some characters need to be escaped
+        self.file.write_fmt(format_args!("{:#02}", value)).unwrap();
+        /*match value
+            /*// Some characters need to be escaped
             0x0a => self.file.write_all(br#"\n"#).unwrap(),// Linefead
             0x5c => self.file.write_all(br#"\\"#).unwrap(), // Backslash
             0x22 => self.file.write_all(br#"\""#).unwrap(),// Couble Quoutes
-            _ => self.file.write_all(&[value]).unwrap(),
-        }
+            _ => self.file.write_all(&[value]).unwrap(),*/
+        }*/
     }
 
     #[inline]
