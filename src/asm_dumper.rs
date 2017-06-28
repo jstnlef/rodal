@@ -215,8 +215,8 @@ impl<W: Write> AsmDumper<W> {
 
         // Write a label indicating the end of the rodal dump
         let end_label = AsmLabel::new("RODAL_END".to_string());
-        self.write_global(end_label);
-        self.write_label_declaration(end_label.clone());
+        self.write_global(end_label.clone());
+        self.write_label_declaration(end_label);
 
         self.file.write_all(b"#END RODAL DUMP\n").unwrap();
     }
