@@ -42,6 +42,6 @@ pub fn load_asm_name_move<T>(name: &str) -> T {
     let ret = unsafe {libc::dlsym(rtld_default, cstring.unwrap().as_ptr())};
     unsafe{ptr::read(mem::transmute::<*const libc::c_void, *mut T>(ret))}
 }
-pub fn load_asm_tags<'a>()->HashMap<usize, Vec<*const ()>> { load_asm_name_move("RODAL_TAGS").unwrap() }
+pub fn load_asm_tags<'a>()->HashMap<usize, Vec<*const ()>> { load_asm_name_move("RODAL_TAGS") }
 
 pub static mut RODAL_BOUND: Option<(Address, Address)> = None;
