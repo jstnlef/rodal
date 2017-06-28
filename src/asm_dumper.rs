@@ -310,7 +310,7 @@ impl<W: Write> AsmDumper<W> {
     fn write_type_object(&mut self, label: AsmLabel) {
         assert!(label.offset == 0);
         self.start_directive(AsmDirective::Other);
-        self.file.write_fmt(format_args!("\t.type {}, object\n", label.base)).unwrap();
+        self.file.write_fmt(format_args!("\t.type {}, %object\n", label.base)).unwrap();
     }
     #[inline]
     fn write_label_declaration(&mut self, label: AsmLabel) {
