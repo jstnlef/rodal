@@ -36,11 +36,11 @@ pub fn try_load_asm_name_move<T>(name: &str) -> Option<T> {
         Some(unsafe{ptr::read(mem::transmute::<*const libc::c_void, *mut T>(ret))})
     }
 }
-pub fn load_asm_name_move<T>(name: &str) -> Option<T> {
+pub fn load_asm_name_move<T>(name: &str) -> T {
     let rtld_default = unsafe {libc::dlopen(ptr::null(), 0)};
     let cstring = CString::new(name.to_string());
     let ret = unsafe {libc::dlsym(rtld_default, cstring.unwrap().as_ptr())};
-    Some(unsafe{ptr::read(mem::transmute::<*const libc::c_void, *mut T>(ret))})
+    unsafe{ptr::read(mem::transmute::<*const libc::c_void, *mut T>(ret))}
 }
 pub fn load_asm_tags<'a>()->HashMap<usize, Vec<*const ()>> { load_asm_name_move("RODAL_TAGS").unwrap() }
 

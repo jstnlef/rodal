@@ -23,7 +23,7 @@ build = "build.rs"
 rustc_version = "*"
 
 [dependencies]
-libc = "0.2.24"
+libc = "*"
 num = "*"
 log = "*"
 field-offset = "*"
