@@ -220,7 +220,7 @@ pub struct RandomState { pub k0: u64, pub k1: u64, }
 rodal_struct!(std::collections::hash_map::RandomState{k0, k1} = RandomState);
 struct DefaultResizePolicy;
 rodal_struct!(DefaultResizePolicy{});
-pub struct HashMap<K, V, S = RandomState> {
+pub struct HashMap<K, V, S = std::collections::hash_map::RandomState> {
     hash_builder: S,
     table: RawTable<K, V>,
     resize_policy: DefaultResizePolicy,
@@ -235,11 +235,11 @@ for std::collections::HashMap<K, V, S> {
         // Transmute to the fake_std version so we can access private fields
         let fake_self: &HashMap<K, V, S> = unsafe{std::mem::transmute(self)};
 
-        dumper.dump_object_here(&fake_self.hash_builder);
+        dumper.dump_object(&fake_self.hash_builder);
 
         // Dump table
-        dumper.dump_object_here(&fake_self.table.capacity_mask);
-        dumper.dump_object_here(&fake_self.table.size);
+        dumper.dump_object(&fake_self.table.capacity_mask);
+        dumper.dump_object(&fake_self.table.size);
         if fake_self.table.capacity() == 0 {
             // Not an actual pointer (there is no associated memory)
             dumper.dump_value(&fake_self.table.hashes);
@@ -265,9 +265,9 @@ for std::collections::HashMap<K, V, S> {
                     HashMap::<K, V, S>::dump_contents)},
                 pos.to_ref::<HashUint>(), // Where to actually dump the data
                 size, align);
-            dumper.dump_object_here(&fake_self.table.hashes);
+            dumper.dump_object(&fake_self.table.hashes);
         }
-        dumper.dump_object_here(&fake_self.resize_policy);
+        dumper.dump_object(&fake_self.resize_policy);
     }
 }
 impl<K: Eq + std::hash::Hash + Dump, V: Dump, S: std::hash::BuildHasher + Dump>
@@ -420,5 +420,39 @@ unsafe impl<'a, T: Dump> Dump for FakeArc<'a, T> {
 
         dumper.dump_padding(&self.inner);
         dumper.dump_reference_here(&fake_inner);
+    }
+}
+
+pub struct EmptyHashMap<K, V, S = std::collections::hash_map::RandomState> {
+    hash_builder: S,
+    table: RawTable<K, V>,
+    resize_policy: DefaultResizePolicy,
+}
+impl<K: Eq + std::hash::Hash, V> EmptyHashMap<K, V, std::collections::hash_map::RandomState> {
+    pub fn new() -> Self { unsafe {std::mem::transmute(std::collections::HashMap::<K, V, std::collections::hash_map::RandomState>::new()) } }
+}
+// TODO: Rustc complains with 'transmute called with differently sized types: std::collections::HashMap<K, V, S> (size can vary because of S) to dump_std::EmptyHashMap<K, V, S> (size can vary because of S)'
+/*impl<K: Eq + std::hash::Hash, V, S: std::hash::BuildHasher> EmptyHashMap<K, V, S> {
+    fn with_hasher(hash_builder: S) -> Self { unsafe {std::mem::transmute(std::collections::HashMap::<K, V, S>::with_hasher(hash_builder))} }
+}*/
+// The Eq + Hash and BuildHasher contstratins are needed
+// as almost all of the hashmap's code requires this
+// (without them, we won't even be able to iterate over it's elements)
+unsafe impl<K: Eq + std::hash::Hash, V, S: std::hash::BuildHasher + Dump> Dump
+for EmptyHashMap<K, V, S> {
+    fn dump<D: ?Sized + Dumper>(&self, dumper: &mut D) {
+        dumper.debug_record("std::collections::HashMap<K, V, S>", "dump");
+        // Transmute to the fake_std version so we can access private fields
+        let fake_self: &EmptyHashMap<K, V, S> = unsafe{std::mem::transmute(self)};
+
+        dumper.dump_object(&fake_self.hash_builder);
+
+        // Dump table
+        dumper.dump_object(&fake_self.table.capacity_mask);
+        dumper.dump_object(&fake_self.table.size);
+        assert!(fake_self.table.capacity() == 0);
+        // Not an actual pointer (there is no associated memory)
+        dumper.dump_value(&fake_self.table.hashes);
+        dumper.dump_object(&fake_self.resize_policy);
     }
 }

@@ -33,6 +33,7 @@ pub use asm_loader::*;
 pub use alloc::*;
 pub use address::*;
 pub use dump_std::FakeArc;
+pub use dump_std::EmptyHashMap;
 
 pub unsafe trait Dump {
     /// Dump this object into the given RODAL Dumper

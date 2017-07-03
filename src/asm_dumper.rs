@@ -123,7 +123,8 @@ pub struct AsmDumper<W: Write>
 impl<W: Write> AsmDumper<W> {
     #[cfg(debug_assertions)]
     pub fn new(mut file: W) -> AsmDumper<W> {
-        file.write_all(b"#START RODAL DUMP\n\t.data\n").unwrap();
+        writeln!(file, "#START RODAL DUMP").unwrap();
+        writeln!(file, "\t.data").unwrap();
         AsmDumper::<W> {
             file: file,
             current_directive: AsmDirective::Other,
@@ -139,7 +140,8 @@ impl<W: Write> AsmDumper<W> {
     }
     #[cfg(not(debug_assertions))]
     pub fn new(mut file: W) -> AsmDumper<W> {
-        file.write_all(b"#START RODAL DUMP\n\t.data\n").unwrap();
+        writeln!(file, "#START RODAL DUMP").unwrap();
+        writeln!(file, "\t.data").unwrap();
         AsmDumper::<W> {
             file: file,
             current_directive: AsmDirective::Other,
@@ -217,14 +219,14 @@ impl<W: Write> AsmDumper<W> {
         self.write_global(end_label.clone());
         self.write_label_declaration(end_label);
 
-        self.file.write_all(b"#END RODAL DUMP\n").unwrap();
+        writeln!(self.file, "#END RODAL DUMP").unwrap();
     }
 
     #[inline]
     fn start_directive(&mut self, new_directive: AsmDirective) {
         match self.current_directive {
             // End the directive with a newline
-            AsmDirective::Byte | AsmDirective::Ptr => {self.file.write_all(b"\n").unwrap();}
+            AsmDirective::Byte | AsmDirective::Ptr => {writeln!(self.file).unwrap();}
             _ => {}
         }
         self.current_directive = new_directive;
@@ -236,7 +238,7 @@ impl<W: Write> AsmDumper<W> {
     #[inline]
     fn write_skip(&mut self, size: usize)  {
         self.start_directive(AsmDirective::Other);
-        self.file.write_fmt(format_args!("\t.skip {}\n", size)).unwrap();
+        writeln!(self.file, "\t.skip {}", size).unwrap();
     }
 
     #[inline]
@@ -244,16 +246,16 @@ impl<W: Write> AsmDumper<W> {
         match self.current_directive {
             // Continue the current byte directive
             AsmDirective::Byte => {
-                self.file.write_all(b", ").unwrap();
+                write!(self.file, ", ").unwrap();
             },
             _ => {
                 self.start_directive(AsmDirective::Byte);
                 // Start a new byte directive
-                self.file.write_all(b"\t.byte ").unwrap();
+                write!(self.file, "\t.byte ").unwrap();
             }
         }
 
-        self.file.write_fmt(format_args!("{:#02x}", value)).unwrap();
+        write!(self.file, "{:#02x}", value).unwrap();
     }
 
     #[inline]
@@ -261,25 +263,26 @@ impl<W: Write> AsmDumper<W> {
         assert!(label.offset == 0);
         self.start_directive(AsmDirective::Other);
         if cfg!(target_os = "linux") { // Not suported on macosx
-            self.file.write_fmt(format_args!("\t.size {}, .-{}\n\n", label.base, label.base)).unwrap();
+            writeln!(self.file, "\t.size {}, .-{}", label.base, label.base).unwrap();
+            writeln!(self.file).unwrap();
         }
     }
 
     #[inline]
     fn write_equiv(&mut self, target: AsmLabel, source: AsmLabel)  {
         self.start_directive(AsmDirective::Other);
-        self.file.write_fmt(format_args!("\t.equiv {}, {}\n", target.base, source.offset(-target.offset))).unwrap();
+        writeln!(self.file, "\t.equiv {}, {}", target.base, source.offset(-target.offset)).unwrap();
     }
 
     #[inline]
     fn write_label_reference(&mut self, label: AsmLabel)  {
         match self.current_directive {
             // Continue the current ptr directive
-            AsmDirective::Ptr => self.file.write_fmt(format_args!{", {}", label}).unwrap(),
+            AsmDirective::Ptr => write!(self.file, ", {}", label).unwrap(),
             _ => {
                 self.start_directive(AsmDirective::Ptr);
                 // Start a new ptr directive
-                self.file.write_fmt(format_args!{"\t{} {}", POINTER_DIRECTIVE, label}).unwrap();
+                write!(self.file, "\t{} {}", POINTER_DIRECTIVE, label).unwrap();
             }
         }
     }
@@ -291,16 +294,16 @@ impl<W: Write> AsmDumper<W> {
         // We need to align to usize as we will store a usize indicating the size of the object
         let alignment = lcm(mem::align_of::<usize>(), alignment);
         self.start_directive(AsmDirective::Other);
-        self.file.write_fmt(format_args!("\t.balign {}\n", alignment)).unwrap();
+        writeln!(self.file, "\t.balign {}", alignment).unwrap();
 
         // Add neccesary padding so that the data for the object is properly aligned
         let padding = alignment - mem::size_of::<usize>();
         if padding > 0 {
-            self.file.write_fmt(format_args!("\t.skip {}\n", padding)).unwrap();
+            write!(self.file, "\t.skip {}", padding).unwrap();
         }
 
         // Write the size, which will be aligned to mem::align_of::<usize>()
-        self.file.write_fmt(format_args!{"\t{} {}\n", POINTER_DIRECTIVE, size}).unwrap();
+        writeln!(self.file, "\t{} {}", POINTER_DIRECTIVE, size).unwrap();
 
         // Now the next thing that is written will be aligned to alignment
         // And have a properly aligned usize immediatly before it
@@ -310,21 +313,21 @@ impl<W: Write> AsmDumper<W> {
     fn write_global(&mut self, label: AsmLabel) {
         assert!(label.offset == 0);
         self.start_directive(AsmDirective::Other);
-        self.file.write_fmt(format_args!("\t.globl {}\n", label.base)).unwrap();
+        writeln!(self.file, "\t.globl {}", label.base).unwrap();
     }
     #[inline]
     fn write_type_object(&mut self, label: AsmLabel) {
         assert!(label.offset == 0);
         self.start_directive(AsmDirective::Other);
         if cfg!(target_os = "linux") { // Not suported on macosx
-            self.file.write_fmt(format_args!("\t.type {}, %object\n", label.base)).unwrap();
+            writeln!(self.file, "\t.type {}, %object", label.base).unwrap();
         }
     }
     #[inline]
     fn write_label_declaration(&mut self, label: AsmLabel) {
         assert!(label.offset == 0);
         self.start_directive(AsmDirective::Other);
-        self.file.write_fmt(format_args!("{}:\n", label.base)).unwrap();
+        writeln!(self.file, "{}:", label.base).unwrap();
     }
 
     #[inline]
@@ -480,8 +483,6 @@ impl<W: Write> Dumper for AsmDumper<W> {
         trace!("{}{type_name}::{func_name}",
             indent, type_name = type_name, func_name = func_name);
         self.debug_stack.push(self.current_pointer);
-
-        //self.file.write_fmt(format_args!(" /*{}::{}*/ ", type_name, func_name)).unwrap();
     }
 
     // Set the current position to be returned by current_position
