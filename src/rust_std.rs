@@ -1,22 +1,22 @@
-// Copyright 2017 The Australian National University
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Copyright 2014 The Rust Project Developers.
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
+// documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
+// rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to
+// permit persons to whom the Software is furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all copies or substantial portions of the
+// Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
+// WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+// COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 /// Implements Dump for various standard library types
 use super::*;
 use std;
 
-// are referencing the types declared here and not the real std types
 rodal_pointer!(['a, T] &'a T = *T);
 rodal_pointer!(['a, T] &'a mut T = *T);
 rodal_pointer!([T] *const T = *T);
@@ -45,6 +45,7 @@ rodal_value!(usize);
 rodal_value!(f32);
 rodal_value!(f64);
 rodal_value!(char);
+
 //rodal_enum!([T: Dump] std::option::Option<T>{None, (Some: val)});
 // This is implemented manually as the rodal_enum! macro dosn't work with generics...
 unsafe impl<T: Dump> Dump for std::option::Option<T> {
@@ -60,17 +61,15 @@ unsafe impl<T: Dump> Dump for std::option::Option<T> {
         }
     }
 }
-// These definitions are copied from the standard library
-// This is neccesary so we can use private fields, and types
-// that are unstable, by making copies whith identical layouts
-// But these prefixes are prefixed with Rodal
 
-// Note: the types declared here but without 'pub' are either private to the real standard libarary
-// or are unstable
-/// core::nonzero (libcore/nonzero.rs)
+// The types declared here have been copied (and slightly modified) from the rust source code
+// This is neccesary so we can use private fields, and types, that are unstable, by making copies whith identical layouts.
+// Types referenced without an 'std::' prefix, are the copies defined in this file, and not the real ones.
+
+/// unstable core::nonzero (libcore/nonzero.rs)
 struct NonZero<T>(pub T); // T: core::nonzero::Zeroable
 
-/// core::ptr (libcore/ptr.rs)
+/// unstable core::ptr (libcore/ptr.rs)
 struct Unique<T: ?Sized> {pub pointer: NonZero<*const T>, pub _marker: std::marker::PhantomData<T>}
 // Utility impls to make unique more usable
 #[allow(dead_code)]
@@ -85,14 +84,14 @@ impl<T> Unique<T> {
 rodal_object_reference!([T: Dump] (Unique<T>) = &T);
 rodal_object!([T: Dump] Unique<[T]> = Repr<T>);
 
-/// core::ptr (libcore/ptr.rs)
+/// unstable core::ptr (libcore/ptr.rs)
 struct Shared<T: ?Sized> { pub pointer: NonZero<*const T>, _marker: std::marker::PhantomData<T> }
 rodal_object_reference!([T: Dump] Shared<T> = &T);
 rodal_object!([T: Dump] Shared<[T]> = Repr<T>);
 
-/// collections::vec (libcollections/vec.rs)
+// public collections::vec (libcollections/vec.rs)
 pub struct Vec<T> { buf: RawVec<T>, pub len: usize }
-/// alloc::raw_vec (liballoc/rawvec.rs)
+// unstable alloc::raw_vec (liballoc/rawvec.rs)
 struct RawVec<T> { pub ptr: Unique<T>, pub cap: usize }
 unsafe impl<T: Dump> Dump for std::vec::Vec<T> {
     fn dump<D: ?Sized + Dumper>(&self, dumper: &mut D) {
@@ -129,27 +128,27 @@ impl <T: Dump> Vec<T> {
         }
     }
 }
-//collections::string (src/libcollections/string.rs)
+// public collections::string (src/libcollections/string.rs)
 pub struct String { pub vec: std::vec::Vec<u8> }
 rodal_struct!(std::string::String{vec} = String);
 
-// alloc::arc (liballoc/arc.rs)
+// public alloc::arc (liballoc/arc.rs)
 pub struct Arc<T: ?Sized> { ptr: Shared<ArcInner<T>>, }
 rodal_struct!([T: Dump] std::sync::Arc<T>{ptr} = Arc<T>);
 
-// alloc::arc (liballoc/arc.rs)
-struct ArcInner<T: ?Sized> { strong: std::sync::atomic::AtomicUsize, weak: std::sync::atomic::AtomicUsize, data: T, }
+// private alloc::arc (liballoc/arc.rs)
+pub struct ArcInner<T: ?Sized> { pub strong: std::sync::atomic::AtomicUsize, pub weak: std::sync::atomic::AtomicUsize, pub data: T, }
 rodal_struct!([T: Dump] ArcInner<T>{strong, weak, data});
 
-// std::sys::poision (libstd/syscommon/poison.rs)
+// private std::sys::poision (libstd/syscommon/poison.rs)
 struct Flag { pub failed: std::sync::atomic::AtomicBool }
 rodal_value!(Flag);
 
-// core::cell (libcore/cell.rs)
+// public core::cell (libcore/cell.rs)
 pub struct UnsafeCell<T: ?Sized> { pub value: T }
 rodal_struct!([T: ?Sized + Dump] UnsafeCell<T>{value});
 
-// std::sync (libstd/sync/rwlock.rs)
+// public std::sync (libstd/sync/rwlock.rs)
 pub struct RwLock<T: ?Sized> {
     pub inner: Box<self::sys::RWLock>, // sys::RWLock (system dependent struct, the exact value can't be dumped be we can create a new one and dump that instead)
     poison: Flag,
@@ -171,7 +170,7 @@ unsafe impl<T: ?Sized + Dump> Dump for std::sync::RwLock<T> {
     }
 }
 
-// System specific stuff
+// private std (libstd/sys/)
 #[cfg(windows)]
 mod sys {
     use libc;
@@ -203,7 +202,7 @@ mod sys {
         pub num_readers: std::sync::atomic::AtomicUsize,
     }
 }
-//pub struct sys::RWLock { pub inner: super::UnsafeCell<SRWLOCK> }
+
 unsafe impl Dump for sys::RWLock {
     fn dump<D: ?Sized + Dumper>(&self, dumper: &mut D) {
         dumper.debug_record("sys::RWLock", "dump");
@@ -215,16 +214,17 @@ unsafe impl Dump for sys::RWLock {
     }
 }
 
-// std::collections::hash_map (src/libstd/collections/hash/map.rs)
+// public std::collections::hash_map (src/libstd/collections/hash/map.rs)
 pub struct RandomState { pub k0: u64, pub k1: u64, }
 rodal_struct!(std::collections::hash_map::RandomState{k0, k1} = RandomState);
-struct DefaultResizePolicy;
+pub struct DefaultResizePolicy;
 rodal_struct!(DefaultResizePolicy{});
 pub struct HashMap<K, V, S = std::collections::hash_map::RandomState> {
-    hash_builder: S,
-    table: RawTable<K, V>,
-    resize_policy: DefaultResizePolicy,
+    pub hash_builder: S,
+    pub table: RawTable<K, V>,
+    pub resize_policy: DefaultResizePolicy,
 }
+
 // The Eq + Hash and BuildHasher contstratins are needed
 // as almost all of the hashmap's code requires this
 // (without them, we won't even be able to iterate over it's elements)
@@ -304,8 +304,8 @@ HashMap<K, V, S> {
     }
 }
 
-// std::collections::hash_map (src/libstd/collections/hash/table.rs)
-struct TaggedHashUintPtr(Unique<HashUint>);
+// private std::collections::hash_map (src/libstd/collections/hash/table.rs)
+pub struct TaggedHashUintPtr(Unique<HashUint>);
 
 // Note: this is a tagged pointer, but it will either have the value
 // of the underlying pointer or the pointer + 1
@@ -315,20 +315,23 @@ rodal_pointer!(TaggedHashUintPtr = *HashUint);
 impl TaggedHashUintPtr {
     fn ptr(&self) -> *mut HashUint { (self.0.as_ptr() as usize & !1) as *mut HashUint }
 }
-type HashUint = usize;
-struct RawTable<K, V> {
+// private std::collections::hash_map (src/libstd/collections/hash/table.rs)
+pub type HashUint = usize;
+
+// private std::collections::hash_map (src/libstd/collections/hash/table.rs)
+pub struct RawTable<K, V> {
     pub capacity_mask: usize,
     pub size: usize,
     pub hashes: TaggedHashUintPtr,
     pub marker: std::marker::PhantomData<(K, V)>,
 }
 impl<K, V> RawTable<K, V> {
-    fn capacity(&self) -> usize { self.capacity_mask.wrapping_add(1) }
+    pub fn capacity(&self) -> usize { self.capacity_mask.wrapping_add(1) }
 }
 
 // Slices...
 
-//core::slice (src/libcore/slice/mod.rs)
+//private core::slice (src/libcore/slice/mod.rs)
 #[repr(C)] // Repr<T> has the same layout as &[T]
 struct Repr<T> {
     pub data: *const T,
@@ -367,92 +370,7 @@ impl <T: Dump> Repr<T> {
     }
 }
 
-
 rodal_struct!(['a, T] &'a [T]{data, len} = Repr<T>);
 rodal_struct!(['a, T] &'a mut[T]{data, len} = Repr<T>);
 rodal_struct!([T] *const[T]{data, len} = Repr<T>);
 rodal_struct!([T] *mut[T]{data, len} = Repr<T>);
-
-// Use new() to make a new fake arc and you can dump that
-// You can then reload a pointer to it as a real Arc
-pub struct FakeArc<'a, T: 'a> {
-    inner: &'a T,
-}
-//struct ArcInner<T: ?Sized> { strong: std::sync::atomic::AtomicUsize, weak: std::sync::atomic::AtomicUsize, data: T, }
-impl<'a, T: Dump> FakeArc<'a, T> {
-    pub fn new(val: &'a T) -> FakeArc<'a, T> {
-        FakeArc::<'a, T> {
-            inner: val
-        }
-    }
-
-    // Dump an ArcInner
-    fn dump_inner<D: ?Sized + Dumper>(&self, dumper: &mut D) {
-        dumper.debug_record("FakeArc<'a, T>", "dump_inner");
-
-        let start = dumper.current_position();
-        // Dump the default strong value of 1
-        dumper.dump_padding((start + offset_of!(ArcInner<T> => strong).get_byte_offset()).to_ref::<()>());
-        dumper.dump_object_here(&std::sync::atomic::AtomicUsize::new(1));
-
-        // Dump the default weak value of 1
-        dumper.dump_padding((start + offset_of!(ArcInner<T> => weak).get_byte_offset()).to_ref::<()>());
-        dumper.dump_object_here(&std::sync::atomic::AtomicUsize::new(1));
-
-        // Dump the containing data
-        dumper.dump_padding((start + offset_of!(ArcInner<T> => data).get_byte_offset()).to_ref::<()>());
-        dumper.dump_object_here(self.inner);
-    }
-}
-unsafe impl<'a, T: Dump> Dump for FakeArc<'a, T> {
-    fn dump<D: ?Sized + Dumper>(&self, dumper: &mut D) {
-        dumper.debug_record("FakeArc<'a, T>", "dump");
-
-        // Where to dump our fake ArcInner
-        // (make it include the real position of inner so that references to inside of inner will be correctly preserved)
-        let fake_inner = (Address::new(self.inner) - offset_of!(ArcInner<T> => data).get_byte_offset()).to_ref::<ArcInner<T>>();
-
-        dumper.reference_object_function_sized_position(
-            self, // the argument to pass to the dump function
-            // The function to use to dump the contents
-            unsafe { std::mem::transmute::<fn(&FakeArc<'a, T>, &mut D), DumpFunction<D>>(FakeArc::<'a, T>::dump_inner) },
-            fake_inner, std::mem::size_of::<ArcInner<T>>(), std::mem::align_of::<ArcInner<T>>());
-
-        dumper.dump_padding(&self.inner);
-        dumper.dump_reference_here(&fake_inner);
-    }
-}
-
-pub struct EmptyHashMap<K, V, S = std::collections::hash_map::RandomState> {
-    hash_builder: S,
-    table: RawTable<K, V>,
-    resize_policy: DefaultResizePolicy,
-}
-impl<K: Eq + std::hash::Hash, V> EmptyHashMap<K, V, std::collections::hash_map::RandomState> {
-    pub fn new() -> Self { unsafe {std::mem::transmute(std::collections::HashMap::<K, V, std::collections::hash_map::RandomState>::new()) } }
-}
-// TODO: Rustc complains with 'transmute called with differently sized types: std::collections::HashMap<K, V, S> (size can vary because of S) to dump_std::EmptyHashMap<K, V, S> (size can vary because of S)'
-/*impl<K: Eq + std::hash::Hash, V, S: std::hash::BuildHasher> EmptyHashMap<K, V, S> {
-    fn with_hasher(hash_builder: S) -> Self { unsafe {std::mem::transmute(std::collections::HashMap::<K, V, S>::with_hasher(hash_builder))} }
-}*/
-// The Eq + Hash and BuildHasher contstratins are needed
-// as almost all of the hashmap's code requires this
-// (without them, we won't even be able to iterate over it's elements)
-unsafe impl<K: Eq + std::hash::Hash, V, S: std::hash::BuildHasher + Dump> Dump
-for EmptyHashMap<K, V, S> {
-    fn dump<D: ?Sized + Dumper>(&self, dumper: &mut D) {
-        dumper.debug_record("std::collections::HashMap<K, V, S>", "dump");
-        // Transmute to the fake_std version so we can access private fields
-        let fake_self: &EmptyHashMap<K, V, S> = unsafe{std::mem::transmute(self)};
-
-        dumper.dump_object(&fake_self.hash_builder);
-
-        // Dump table
-        dumper.dump_object(&fake_self.table.capacity_mask);
-        dumper.dump_object(&fake_self.table.size);
-        assert!(fake_self.table.capacity() == 0);
-        // Not an actual pointer (there is no associated memory)
-        dumper.dump_value(&fake_self.table.hashes);
-        dumper.dump_object(&fake_self.resize_policy);
-    }
-}
