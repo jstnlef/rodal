@@ -45,7 +45,6 @@ impl Address {
     pub fn to_ref<'a, T>(&self) -> &'a T { unsafe { mem::transmute(self.to_ptr::<T>())} }
     pub fn value(&self) -> usize { self.0 }
     pub fn to_ptr<T>(&self) -> *const T { self.0 as *const T }
-    pub fn is_null(&self) -> bool { self.0 == 0 }
 }
 impl Add<usize> for Address {
     type Output = Address;
