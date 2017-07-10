@@ -288,6 +288,19 @@ impl<W: Write> AsmDumper<W> {
     }
 
     #[inline]
+    fn write_null_reference(&mut self)  {
+        match self.current_directive {
+            // Continue the current ptr directive
+            AsmDirective::Ptr => write!(self.file, ", 0").unwrap(),
+            _ => {
+                self.start_directive(AsmDirective::Ptr);
+                // Start a new ptr directive
+                write!(self.file, "\t{} 0", POINTER_DIRECTIVE).unwrap();
+            }
+        }
+    }
+    
+    #[inline]
     // We need to write the size of objects so that we can handle it if
     // realloc is called on one
     fn write_size_align(&mut self, size: usize, alignment: usize)  {
@@ -372,6 +385,9 @@ impl<W: Write> Dumper for AsmDumper<W> {
             indent = *self.debug_indent.last().unwrap(),
             location = start));
 
+        if start.is_null() {
+            return; // Ignore null references
+        }
         //trace!("{:?}: reference_object_sized_position({}, {}, {}, {})", self.current_pointer, Address::new(value), start, size, alignment);
 
         // We already have a record for this object
@@ -425,23 +441,26 @@ impl<W: Write> Dumper for AsmDumper<W> {
             empty = "",
             indent = *self.debug_indent.last().unwrap(),
             location = ptr));
-
+            
         //trace!("{:?}: dump_reference_here({:?} = &{})", self.current_pointer, Address::new(value), ptr);
-
-        // Look for a recorded complete object containg this,..
-        let label = match get_complete_object(ptr, &self.dumped_objects) {
-            Some(value) => value.label.offset(ptr - value.start),
-            None => match get_complete_object(ptr, &self.pending_objects) {
+        if ptr.is_null() {
+            self.write_null_reference();
+        } else {
+            // Look for a recorded complete object containg this,..
+            let label = match get_complete_object(ptr, &self.dumped_objects) {
                 Some(value) => value.label.offset(ptr - value.start),
-                None => {
-                    // Just create a temporary label, and record our pointer
-                    self.pending_references.insert(ptr);
-                    AsmLabel::new(format!(".Lptr_{}", ptr))
+                None => match get_complete_object(ptr, &self.pending_objects) {
+                    Some(value) => value.label.offset(ptr - value.start),
+                    None => {
+                        // Just create a temporary label, and record our pointer
+                        self.pending_references.insert(ptr);
+                        AsmLabel::new(format!(".Lptr_{}", ptr))
+                    }
                 }
-            }
-        };
+            };
 
-        self.write_label_reference(label);
+            self.write_label_reference(label);
+        }
         // Pointerr & references should always have the same size, so theres no need to override this
         self.current_pointer += mem::size_of::<&&T>();
         //trace!("+ {} -> {:?}", mem::size_of::<&&T>(), self.current_pointer);
