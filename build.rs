@@ -16,7 +16,7 @@ extern crate rustc_version;
 
 fn main() {
     let hash = rustc_version::version_meta().unwrap().commit_hash.unwrap();
-    if  hash != "03fc9d622e0ea26a3d37f5ab030737fcca6928b9" && hash != "0ade339411587887bf01bcfa2e9ae4414c8900d4" {
-        panic!("expected rustc version 1.18.0 (03fc9d622 2017-06-06) or 1.19.0 (0ade33941 2017-07-17) (if you want to use a different one make sure the declarations and functions in dump_std correspond to your rustc's source code)")
+    if  hash != "03fc9d622e0ea26a3d37f5ab030737fcca6928b9" && hash != "0ade339411587887bf01bcfa2e9ae4414c8900d4" && hash != "10d7cb44c98f25c04dcefb6b6555237de8b8bd7e" {
+        panic!("expected rustc version 1.18.0 (03fc9d622 2017-06-06) or 1.19.0 (0ade33941 2017-07-17) or 1.19.0-nightly (10d7cb44c 2017-06-18) (if you want to use a different one make sure the declarations and functions in dump_std correspond to your rustc's source code)")
     }
 }
