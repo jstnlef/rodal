@@ -94,3 +94,9 @@ for EmptyHashMap<K, V, S> {
         dumper.dump_object(&self.0.resize_policy);
     }
 }
+
+pub struct EmptyLinkedList<T>(rust_std::LinkedList<T>);
+impl<T> EmptyLinkedList<T> {
+    pub fn new() -> Self { unsafe {std::mem::transmute(std::collections::LinkedList::<T>::new()) } }
+}
+rodal_value!([T] EmptyLinkedList<T>);

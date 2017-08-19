@@ -29,6 +29,7 @@ rodal_object!([T: Dump] std::boxed::Box<[T]> = Repr<T>);
 rodal_value!(std::sync::atomic::AtomicBool);
 rodal_value!(std::sync::atomic::AtomicIsize);
 rodal_value!(std::sync::atomic::AtomicUsize);
+rodal_value!([T: ?Sized] std::marker::PhantomData<T>); // Should be empty
 
 // Primitives, not declared here
 rodal_value!(bool);
@@ -68,6 +69,8 @@ unsafe impl<T: Dump> Dump for std::option::Option<T> {
 
 /// unstable core::nonzero (libcore/nonzero.rs)
 struct NonZero<T>(pub T); // T: core::nonzero::Zeroable
+
+
 
 /// unstable core::ptr (libcore/ptr.rs)
 struct Unique<T: ?Sized> {pub pointer: NonZero<*const T>, pub _marker: std::marker::PhantomData<T>}
@@ -154,6 +157,16 @@ pub struct RwLock<T: ?Sized> {
     poison: Flag,
     pub data: UnsafeCell<T>,
 }
+
+// std::sync (src/libstd/sync/mutex.rs)
+pub struct Mutex<T: ?Sized> {
+    inner: Box<sys::Mutex>,
+    poison: Flag,
+    data: UnsafeCell<T>,
+}
+
+rodal_struct!([T: ?Sized + Dump] std::sync::Mutex<T>{inner, poison, data} = Mutex<T>);
+
 // Acquires a read lock on it's contents before it dumps
 unsafe impl<T: ?Sized + Dump> Dump for std::sync::RwLock<T> {
     fn dump<D: ?Sized + Dumper>(&self, dumper: &mut D) {
@@ -181,6 +194,11 @@ mod sys {
     #[repr(C)]
     pub struct SRWLOCK { pub ptr: LPVOID }
     pub type LPVOID = *mut libc::c_void;
+
+    pub struct Mutex {
+        lock: AtomicUsize,
+        held: UnsafeCell<bool>,
+    }
 }
 #[cfg(target_os = "redox")]
 mod sys {
@@ -201,6 +219,7 @@ mod sys {
         pub write_locked: super::UnsafeCell<bool>,
         pub num_readers: std::sync::atomic::AtomicUsize,
     }
+    pub struct Mutex { pub inner: super::UnsafeCell<libc::pthread_mutex_t> }
 }
 
 unsafe impl Dump for sys::RWLock {
@@ -213,7 +232,16 @@ unsafe impl Dump for sys::RWLock {
         dumper.dump_value_here(lock.inner.as_ref());
     }
 }
+unsafe impl Dump for sys::Mutex {
+    fn dump<D: ?Sized + Dumper>(&self, dumper: &mut D) {
+        dumper.debug_record("sys::Mutex", "dump");
 
+        // Create a new std::sync::RwLock, and dump its value of inner
+        // (so that when we load the dump the RwLock will have it's initial state)
+        let mutex: Mutex<()> = unsafe{ std::mem::transmute(std::sync::Mutex::<()>::new(())) };
+        dumper.dump_value_here(&*mutex.inner);
+    }
+}
 // public std::collections::hash_map (src/libstd/collections/hash/map.rs)
 pub struct RandomState { pub k0: u64, pub k1: u64, }
 rodal_struct!(std::collections::hash_map::RandomState{k0, k1} = RandomState);
@@ -328,6 +356,27 @@ pub struct RawTable<K, V> {
 impl<K, V> RawTable<K, V> {
     pub fn capacity(&self) -> usize { self.capacity_mask.wrapping_add(1) }
 }
+
+
+// Linked list
+// std::collections::linked_list (src/libcollections/linked_list.rs)
+pub struct LinkedList<T> {
+    head: Shared<Node<T>>,
+    tail: Shared<Node<T>>,
+    len: usize,
+    marker: std::marker::PhantomData<Box<Node<T>>>,
+}
+rodal_struct!([T: Dump] std::collections::linked_list::LinkedList<T>{head, tail, len, marker} = LinkedList<T>);
+
+// private std::collections::linked_list (src/libcollections/linked_list.rs)
+struct Node<T> {
+    next: Shared<Node<T>>, // Option
+    prev: Shared<Node<T>>, // Option
+    element: T,
+}
+rodal_struct!([T: Dump] Node<T>{next, prev, element});
+
+// std::sync::Mutex
 
 // Slices...
 
