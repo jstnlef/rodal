@@ -14,7 +14,7 @@
 
 [package]
 name = "rodal"
-version = "0.0.8"
+version = "0.0.9"
 authors = [ "Your name <you@example.com>" ]
 include = ["Cargo.toml", "src/**/*.rs"]
 build = "build.rs"

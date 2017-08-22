@@ -158,15 +158,6 @@ pub struct RwLock<T: ?Sized> {
     pub data: UnsafeCell<T>,
 }
 
-// std::sync (src/libstd/sync/mutex.rs)
-pub struct Mutex<T: ?Sized> {
-    inner: Box<sys::Mutex>,
-    poison: Flag,
-    data: UnsafeCell<T>,
-}
-
-rodal_struct!([T: ?Sized + Dump] std::sync::Mutex<T>{inner, poison, data} = Mutex<T>);
-
 // Acquires a read lock on it's contents before it dumps
 unsafe impl<T: ?Sized + Dump> Dump for std::sync::RwLock<T> {
     fn dump<D: ?Sized + Dumper>(&self, dumper: &mut D) {
@@ -176,6 +167,30 @@ unsafe impl<T: ?Sized + Dump> Dump for std::sync::RwLock<T> {
         let lock = self.read().unwrap();
         let data: &T = lock.deref();
         let fake_self: &RwLock<T> = unsafe{std::mem::transmute(self)};
+
+        dumper.dump_object(&fake_self.inner);
+        dumper.dump_object(&fake_self.poison);
+        dumper.dump_object(data);
+    }
+}
+
+
+// std::sync (src/libstd/sync/mutex.rs)
+pub struct Mutex<T: ?Sized> {
+    inner: Box<sys::Mutex>,
+    poison: Flag,
+    pub data: UnsafeCell<T>,
+}
+
+unsafe impl<T: ?Sized + Dump> Dump for std::sync::Mutex<T> {
+    fn dump<D: ?Sized + Dumper>(&self, dumper: &mut D) {
+        dumper.debug_record("std::sync::RwLock<T>", "dump");
+        use std::ops::Deref;
+        // Acquire a lock to self (just so no one tries to modify the contents whilst we try and dump it)
+
+        let lock = self.lock().unwrap();
+        let data: &T = lock.deref();
+        let fake_self: &Mutex<T> = unsafe{std::mem::transmute(self)};
 
         dumper.dump_object(&fake_self.inner);
         dumper.dump_object(&fake_self.poison);
