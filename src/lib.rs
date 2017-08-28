@@ -29,11 +29,19 @@ mod alloc;
 mod address;
 mod rust_std;
 mod extended_std;
+pub use rust_std::Repr;
+use address::CheckedCast;
 pub use asm_dumper::*;
 pub use asm_loader::*;
 pub use alloc::*;
 pub use address::*;
 pub use extended_std::*;
+
+pub unsafe trait Slice {
+    type Value: Dump;
+    fn repr(&self) -> rust_std::Repr<Self::Value>;
+}
+pub unsafe trait !
 
 pub unsafe trait Dump {
     /// Dump this object into the given RODAL Dumper
@@ -92,7 +100,6 @@ pub trait Dumper {
     }
 
     // Dump the object with the specified function
-    // TODO update to the new signature
     fn dump_object_function_here<T: ?Sized>(&mut self, value: &T, dump: DumpFunction<Self>); // Core function
     #[inline] fn dump_object_function<T: ?Sized + Dump>(&mut self, value: &T, dump: DumpFunction<Self>) {
         self.dump_padding(value);
@@ -101,6 +108,7 @@ pub trait Dumper {
 
     #[inline] fn dump_object_here<T: ?Sized + Dump>(&mut self, value: &T) {
         self.dump_object_function_here(as_void_ref(value), Self::get_dump_function::<T>());
+
     }
     #[inline] fn dump_object<T: ?Sized + Dump>(&mut self, value: &T) {
         self.dump_padding(value);
@@ -109,7 +117,7 @@ pub trait Dumper {
 
     fn dump_reference_here<T: ?Sized>(&mut self, value: &&T);
     #[inline] fn dump_reference<T: ?Sized>(&mut self, value: &&T) {
-        self.dump_padding(value); // FAILS HERE
+        self.dump_padding(value);
         self.dump_reference_here(value);
     }
 
@@ -139,6 +147,30 @@ pub trait Dumper {
     #[inline] fn dump_reference_object<T: ?Sized + Dump>(&mut self, value: &&T) {
         self.reference_object(*value);
         self.dump_reference(value);
+    }
+
+    #[inline] fn dump_slice_reference_here<T: ?Sized + Slice>(&mut self, value: &T) {
+        let repr = value.repr();
+        if std::mem::size_of::<T::Value>()*repr.len == 0 {
+            // Dosn't point to any real memory, so just dump a raw value
+            self.dump_value_here(&repr.data);
+        } else {
+            self.reference_object_function_sized_position(
+                value, // the argument to pass to the dump function
+                // The function to use to dump the contents
+                unsafe { std::mem::transmute::<fn(&T, &mut Self), DumpFunction<Self>>(dump_slice_contents::<T, T::Value, Self>) },
+                unsafe{repr.data.as_ref().unwrap()}, // Where to actually dump the data
+                std::mem::size_of::<T::Value>()*repr.len, std::mem::align_of::<T::Value>());
+
+            self.dump_reference_here(unsafe{mem::transmute::<&*const T::Value, &&T::Value>(&repr.data)});
+        }
+
+        self.dump_padding_sized((Address::new(&repr.len) - Address::new(&repr.data)).checked_cast());
+        self.dump_object_here(&repr.len);
+    }
+    #[inline] fn dump_slice_reference<T: ?Sized + Slice>(&mut self, value: &T::Value) {
+        self.dump_padding(value);
+        self.dump_slice_reference_here(value);
     }
 
     // For dumping enums
@@ -187,4 +219,16 @@ impl<D: ?Sized + Dumper> DumpList<D> {
         self.0.clear();
     }
     #[inline] pub fn first(&self)->&() { self.0.keys().next().unwrap().to_ref() }
+}
+
+fn dump_slice_contents<T: ?Sized + Slice, D: Dumper>(value: &T, dumper: &mut D) {
+    let repr = value.repr();
+    dumper.debug_record("Slice<V>", "dump_slice_contents");
+    let slice_self: &&[T::Value] = unsafe{mem::transmute(&repr)};
+
+    dumper.set_position(Address::from_ptr(repr.loc));
+    // Dump the contents of the slice
+    for val in *slice_self {
+        dumper.dump_object(val)
+    }
 }

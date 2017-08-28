@@ -18,7 +18,7 @@ use std::isize;
 use std::mem;
 
 // A utility trait that makes checks when casting
-trait CheckedCast<T> {
+pub trait CheckedCast<T> {
     fn checked_cast(self) -> T;
 }
 impl CheckedCast<isize> for usize {
