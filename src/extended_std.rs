@@ -100,3 +100,13 @@ impl<T> EmptyLinkedList<T> {
     pub fn new() -> Self { unsafe {std::mem::transmute(std::collections::LinkedList::<T>::new()) } }
 }
 rodal_value!([T] EmptyLinkedList<T>);
+
+pub struct EmptyOption<T>(Option<T>);
+
+impl<T> EmptyOption<T> {
+    pub fn new() -> Self {
+        EmptyOption::<T>(None)
+    }
+}
+rodal_value!([T] EmptyOption<T>);
+
