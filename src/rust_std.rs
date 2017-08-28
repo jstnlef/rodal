@@ -84,12 +84,12 @@ impl<T> Unique<T> {
     pub fn as_ptr(&self) -> *const T { unsafe{std::mem::transmute_copy(self)} }
 }
 
-rodal_object_reference!([T: Dump] (Unique<T>) = &T);
+rodal_object_reference!([T: ?Sized + Dump] (Unique<T>) = &T);
 rodal_object!([T: Dump] Unique<[T]> = Repr<T>);
 
 /// unstable core::ptr (libcore/ptr.rs)
 struct Shared<T: ?Sized> { pub pointer: NonZero<*const T>, _marker: std::marker::PhantomData<T> }
-rodal_object_reference!([T: Dump] Shared<T> = &T);
+rodal_object_reference!([T: ?Sized + Dump] Shared<T> = &T);
 rodal_object!([T: Dump] Shared<[T]> = Repr<T>);
 
 // public collections::vec (libcollections/vec.rs)
@@ -137,11 +137,11 @@ rodal_struct!(std::string::String{vec} = String);
 
 // public alloc::arc (liballoc/arc.rs)
 pub struct Arc<T: ?Sized> { ptr: Shared<ArcInner<T>>, }
-rodal_struct!([T: Dump] std::sync::Arc<T>{ptr} = Arc<T>);
+rodal_struct!([T: ?Sized + Dump] std::sync::Arc<T>{ptr} = Arc<T>);
 
 // private alloc::arc (liballoc/arc.rs)
 pub struct ArcInner<T: ?Sized> { pub strong: std::sync::atomic::AtomicUsize, pub weak: std::sync::atomic::AtomicUsize, pub data: T, }
-rodal_struct!([T: Dump] ArcInner<T>{strong, weak, data});
+rodal_struct!([T: ?Sized + Dump] ArcInner<T>{strong, weak, data});
 
 // private std::sys::poision (libstd/syscommon/poison.rs)
 struct Flag { pub failed: std::sync::atomic::AtomicBool }
