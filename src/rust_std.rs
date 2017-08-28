@@ -23,8 +23,8 @@ rodal_pointer!([T] *const T = *T);
 rodal_pointer!([T] * mut T = *T);
 rodal_pointer!([T] std::sync::atomic::AtomicPtr<T> = *T);
 
-//rodal_object_reference!([T: Dump + !Slice] std::boxed::Box<T> = &T);
-rodal_slice_reference!([T: Slice] std::boxed::Box<T> = &T);
+rodal_object_reference!([T: Dump] std::boxed::Box<T> = &T);
+rodal_object!([T: Dump] std::boxed::Box<[T]> = Repr<T>);
 
 rodal_value!(std::sync::atomic::AtomicBool);
 rodal_value!(std::sync::atomic::AtomicIsize);
@@ -46,11 +46,6 @@ rodal_value!(usize);
 rodal_value!(f32);
 rodal_value!(f64);
 rodal_value!(char);
-
-// Slices
-rodal_slice!([T: Dump] [T] = [T]);
-rodal_slice!(str = [u8]);
-
 
 //rodal_enum!([T: Dump] std::option::Option<T>{None, (Some: val)});
 // This is implemented manually as the rodal_enum! macro dosn't work with generics...
@@ -75,6 +70,8 @@ unsafe impl<T: Dump> Dump for std::option::Option<T> {
 /// unstable core::nonzero (libcore/nonzero.rs)
 struct NonZero<T>(pub T); // T: core::nonzero::Zeroable
 
+
+
 /// unstable core::ptr (libcore/ptr.rs)
 struct Unique<T: ?Sized> {pub pointer: NonZero<*const T>, pub _marker: std::marker::PhantomData<T>}
 // Utility impls to make unique more usable
@@ -87,13 +84,13 @@ impl<T> Unique<T> {
     pub fn as_ptr(&self) -> *const T { unsafe{std::mem::transmute_copy(self)} }
 }
 
-rodal_object_reference!([T: Dump] (Unique<T>) = &T);
-rodal_slice_reference!([T: Slice] Unique<T> = &T);
+rodal_object_reference!([T: ?Sized + Dump] (Unique<T>) = &T);
+rodal_object!([T: Dump] Unique<[T]> = Repr<T>);
 
 /// unstable core::ptr (libcore/ptr.rs)
 struct Shared<T: ?Sized> { pub pointer: NonZero<*const T>, _marker: std::marker::PhantomData<T> }
-rodal_object_reference!([T: Dump] Shared<T> = &T);
-rodal_slice_reference!([T: Slice] Shared<T> = &T);
+rodal_object_reference!([T: ?Sized + Dump] Shared<T> = &T);
+rodal_object!([T: Dump] Shared<[T]> = Repr<T>);
 
 // public collections::vec (libcollections/vec.rs)
 pub struct Vec<T> { buf: RawVec<T>, pub len: usize }
@@ -394,15 +391,50 @@ struct Node<T> {
 }
 rodal_struct!([T: Dump] Node<T>{next, prev, element});
 
-// std::collections::linked_list (src/libcollections/linked_list.rs)
-#[repr(C)]
-pub struct Repr<T> {
+// std::sync::Mutex
+
+// Slices...
+
+//private core::slice (src/libcore/slice/mod.rs)
+#[repr(C)] // Repr<T> has the same layout as &[T]
+struct Repr<T> {
     pub data: *const T,
     pub len: usize,
 }
+unsafe impl<T: Dump> Dump for Repr<T> {
+    fn dump<D: ?Sized + Dumper>(&self, dumper: &mut D) {
+        dumper.debug_record("Repr<T>", "dump");
+        if std::mem::size_of::<T>()*self.len == 0 {
+            // Dosn't point to any real memory, so just dump a raw value
+            dumper.dump_value(&self.data);
+        } else {
+            dumper.reference_object_function_sized_position(
+                self, // the argument to pass to the dump function
+                // The function to use to dump the contents
+                unsafe { std::mem::transmute::<fn(&Repr<T>, &mut D), DumpFunction<D>>(Repr::<T>::dump_contents) },
+                unsafe{self.data.as_ref().unwrap()}, // Where to actually dump the data
+                std::mem::size_of::<T>() *self.len, std::mem::align_of::<T>());
 
+            dumper.dump_reference(unsafe{mem::transmute::<&*const T, &&T>(&self.data)});
+        }
 
-rodal_slice_reference!(['a, T: Slice] &'a T = &T);
-rodal_slice_reference!(['a, T: Slice] &'a mut T = &T);
-rodal_slice_reference!([T: Slice] *const T = &T);
-rodal_slice_reference!([T: Slice] *mut T = &T);
+        dumper.dump_object(&self.len);
+    }
+}
+impl <T: Dump> Repr<T> {
+    fn dump_contents<D: ?Sized + Dumper>(&self, dumper: &mut D) {
+        dumper.debug_record("Repr<T>", "dump_contents");
+        let real_self: &&[T] = unsafe{mem::transmute(self)};
+
+        dumper.set_position(Address::from_ptr(self.data));
+        // Dump the contents of the slice
+        for val in *real_self {
+            dumper.dump_object(val)
+        }
+    }
+}
+
+rodal_struct!(['a, T] &'a [T]{data, len} = Repr<T>);
+rodal_struct!(['a, T] &'a mut[T]{data, len} = Repr<T>);
+rodal_struct!([T] *const[T]{data, len} = Repr<T>);
+rodal_struct!([T] *mut[T]{data, len} = Repr<T>);

@@ -67,20 +67,6 @@ rodal_tuple_impl!($(n: T),+)
 use std;
 
 #[macro_export]
-macro_rules! rodal_slice {
-    ([$($gen:tt)*] $ty:ty = [$referant:ty]) => [
-        unsafe impl <$($gen)*> $crate::Slice for $ty {
-            type Value = $referant;
-            fn repr(&self) -> $crate::Repr<Self::Value> {
-                unsafe{std::mem::transmute(self)}
-            }
-        }
-    ];
-
-    ($ty:ty = [$referant:ty]) => [ rodal_slice_reference!{[] $ty = &$referant} ];
-}
-
-#[macro_export]
 #[cfg(debug_assertions)]
 macro_rules! debug_only {
     ($($args:tt)*) => [ $($args)* ];
@@ -111,17 +97,6 @@ macro_rules! rodal_object_reference {
 
     ($ty:ty = &$referant:ty) => [ rodal_object_reference!{[] $ty = &$referant} ];
 }
-
-#[macro_export]
-macro_rules! rodal_slice_reference {
-    ([$($gen:tt)*] $ty:ty = &$referant:ty) => [ rodal___dump_impl!{(fake_self dumper D) [$($gen)*]$ty {
-        let reference = unsafe{std::mem::transmute::<&Self, &&($referant)>(fake_self)};
-        dumper.dump_slice_reference(reference);
-    } = $ty} ];
-
-    ($ty:ty = &$referant:ty) => [ rodal_slice_reference!{[] $ty = &$referant} ];
-}
-
 
 #[macro_export]
 macro_rules! rodal_pointer {
