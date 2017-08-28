@@ -25,6 +25,7 @@ rodal_pointer!([T] std::sync::atomic::AtomicPtr<T> = *T);
 
 rodal_object_reference!([T: Dump] std::boxed::Box<T> = &T);
 rodal_object!([T: Dump] std::boxed::Box<[T]> = Repr<T>);
+rodal_object!(std::boxed::Box<str> = Repr<u8>);
 
 rodal_value!(std::sync::atomic::AtomicBool);
 rodal_value!(std::sync::atomic::AtomicIsize);
@@ -86,11 +87,13 @@ impl<T> Unique<T> {
 
 rodal_object_reference!([T: ?Sized + Dump] (Unique<T>) = &T);
 rodal_object!([T: Dump] Unique<[T]> = Repr<T>);
+rodal_object!(Unique<str> = Repr<u8>);
 
 /// unstable core::ptr (libcore/ptr.rs)
 struct Shared<T: ?Sized> { pub pointer: NonZero<*const T>, _marker: std::marker::PhantomData<T> }
 rodal_object_reference!([T: ?Sized + Dump] Shared<T> = &T);
 rodal_object!([T: Dump] Shared<[T]> = Repr<T>);
+rodal_object!(Shared<str> = Repr<u8>);
 
 // public collections::vec (libcollections/vec.rs)
 pub struct Vec<T> { buf: RawVec<T>, pub len: usize }
@@ -434,7 +437,12 @@ impl <T: Dump> Repr<T> {
     }
 }
 
-rodal_struct!(['a, T] &'a [T]{data, len} = Repr<T>);
-rodal_struct!(['a, T] &'a mut[T]{data, len} = Repr<T>);
-rodal_struct!([T] *const[T]{data, len} = Repr<T>);
-rodal_struct!([T] *mut[T]{data, len} = Repr<T>);
+rodal_struct!(['a, T: Dump] &'a [T]{data, len} = Repr<T>);
+rodal_struct!(['a, T: Dump] &'a mut [T]{data, len} = Repr<T>);
+rodal_struct!([T: Dump] *const [T]{data, len} = Repr<T>);
+rodal_struct!([T: Dump] *mut [T]{data, len} = Repr<T>);
+
+rodal_struct!(['a] &'a str{data, len} = Repr<u8>);
+rodal_struct!(['a] &'a mut str{data, len} = Repr<u8>);
+rodal_struct!(*const str{data, len} = Repr<u8>);
+rodal_struct!(*mut str{data, len} = Repr<u8>);

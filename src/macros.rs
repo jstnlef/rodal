@@ -113,7 +113,7 @@ macro_rules! rodal_object {
         dumper.dump_object(fake_self);
     } = $source} ];
 
-    ($ty:ty = $source:ty) => [ rodal_object!{[] $ty $source} ];
+    ($ty:ty = $source:ty) => [ rodal_object!{[] $ty = $source} ];
 }
 
 
