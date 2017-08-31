@@ -334,19 +334,6 @@ HashMap<K, V, S> {
             dumper.dump_object(key); // Assuming eveything is stored in this order
             dumper.dump_object(value);
         }
-
-        /*  // Create a list to hold the positions and dump functions of the tables contents
-            // (in case iteration dosn't occur in memory order)
-            let mut list = DumpList::<D>::new();
-            for (key, value) in real_self {
-                list.add(key);
-                list.add(value);
-            }
-
-            // Record each element of the table in the list
-            // Dump the tables contents
-            list.dump(dumper);
-        */
     }
 }
 

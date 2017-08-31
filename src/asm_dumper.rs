@@ -110,11 +110,14 @@ pub struct AsmDumper<W: Write>
     #[cfg(debug_assertions)]
     debug_indent: Vec<usize>, // How much to indent debugging info by
 
-    /// Objects we've already dumped (or started to dump)
+    /// Objects we've already dumped
     dumped_objects: BTreeMap<Address, ObjectInfo<W>>,
 
     /// A table of all objects we haven't started dumping yet
     pending_objects: BTreeMap<Address, ObjectInfo<W>>,
+
+    /// Objects we're currently dumping
+    dumping_objects: BTreeMap<Address, ObjectInfo<W>>,
 
     /// References that haven't been resolved to be relative to a complete object yet
     pending_references: BTreeSet<Address>,
@@ -134,6 +137,7 @@ impl<W: Write> AsmDumper<W> {
             debug_indent: Vec::new(),
             dumped_objects: BTreeMap::new(),
             pending_objects: BTreeMap::new(),
+            dumping_objects: BTreeMap::new(),
             pending_references: BTreeSet::new(),
             tags: HashMap::new()
         }
@@ -149,6 +153,7 @@ impl<W: Write> AsmDumper<W> {
             position_offset: 0,
             dumped_objects: BTreeMap::new(),
             pending_objects: BTreeMap::new(),
+            dumping_objects: BTreeMap::new(),
             pending_references: BTreeSet::new(),
             tags: HashMap::new()
         }
@@ -166,15 +171,15 @@ impl<W: Write> AsmDumper<W> {
         debug_only!({
             trace!("");
             trace!("dumping {} [{}, {:+}):", label.base.clone(), start, size)});
-        self.write_global(label.clone());
-        self.write_type_object(label.clone());
+        self.write_global(&label);
+        self.write_type_object(&label);
         self.write_size_align(size, alignment);
-        self.write_label_declaration(label.clone());
+        self.write_label_declaration(&label);
         let dump_function = Self::get_dump_function::<T>();
         self.dumped_objects.insert(start, ObjectInfo::<W>::new(value, dump_function, value, size, alignment, label.clone()));
         self.dump_object_function_here(value, dump_function);
         self.advance_position(start + size); // Add any neccesary padding
-        self.write_size(label);
+        self.write_size(&label);
         self
         // We finished dumping this root object
     }
@@ -194,30 +199,32 @@ impl<W: Write> AsmDumper<W> {
 
         // Still more objects to dump
         while !self.pending_objects.is_empty() {
-            // Remove an element from the map (it dosn't mater which one)
-            // And add a copy to dumped_objects
-            let start = *self.pending_objects.keys().next().unwrap();
-            let value = self.pending_objects.remove(&start).unwrap();
-            self.dumped_objects.insert(start, value.clone());
-            self.current_pointer = start;
+            self.dumping_objects.append(&mut self.pending_objects);
 
-            debug_only!({
-                trace!("");
-                trace!("dumping {} [{}, {:+}):", value.label.base.clone(), start, value.size)});
-            self.write_type_object(value.label.clone());
-            self.write_size_align(value.size, value.alignment);
-            self.write_label_declaration(value.label.clone());
-            self.dump_object_function_here(value.value.to_ref::<()>(), value.dump);
-            self.advance_position(start + value.size);
-            self.write_size(value.label);
+            for (start, value) in self.dumping_objects.clone() {
+                // Remove an element from the map (it dosn't mater which one)
+                // And add a copy to dumped_objects
+                self.current_pointer = start;
+
+                debug_only!({
+                    trace!("");
+                    trace!("dumping {} [{}, {:+}):", value.label.base.clone(), start, value.size)});
+                self.write_type_object(&value.label);
+                self.write_size_align(value.size, value.alignment);
+                self.write_label_declaration(&value.label);
+                self.dump_object_function_here(value.value.to_ref::<()>(), value.dump);
+                self.advance_position(start + value.size);
+                self.write_size(&value.label);
+            }
+            self.dumped_objects.append(&mut self.dumping_objects);
         }
 
         assert!(self.pending_references.is_empty()); // We should've dumped all referenced objects by now
 
         // Write a label indicating the end of the rodal dump
         let end_label = AsmLabel::new("RODAL_END".to_string());
-        self.write_global(end_label.clone());
-        self.write_label_declaration(end_label);
+        self.write_global(&end_label);
+        self.write_label_declaration(&end_label);
 
         writeln!(self.file, "#END RODAL DUMP").unwrap();
     }
@@ -259,7 +266,7 @@ impl<W: Write> AsmDumper<W> {
     }
 
     #[inline]
-    fn write_size(&mut self, label: AsmLabel)  {
+    fn write_size(&mut self, label: &AsmLabel)  {
         assert!(label.offset == 0);
         self.start_directive(AsmDirective::Other);
         if cfg!(target_os = "linux") { // Not suported on macosx
@@ -310,13 +317,13 @@ impl<W: Write> AsmDumper<W> {
     }
 
     #[inline]
-    fn write_global(&mut self, label: AsmLabel) {
+    fn write_global(&mut self, label: &AsmLabel) {
         assert!(label.offset == 0);
         self.start_directive(AsmDirective::Other);
         writeln!(self.file, "\t.globl {}", label.base).unwrap();
     }
     #[inline]
-    fn write_type_object(&mut self, label: AsmLabel) {
+    fn write_type_object(&mut self, label: &AsmLabel) {
         assert!(label.offset == 0);
         self.start_directive(AsmDirective::Other);
         if cfg!(target_os = "linux") { // Not suported on macosx
@@ -324,7 +331,7 @@ impl<W: Write> AsmDumper<W> {
         }
     }
     #[inline]
-    fn write_label_declaration(&mut self, label: AsmLabel) {
+    fn write_label_declaration(&mut self, label: &AsmLabel) {
         assert!(label.offset == 0);
         self.start_directive(AsmDirective::Other);
         writeln!(self.file, "{}:", label.base).unwrap();
@@ -375,13 +382,15 @@ impl<W: Write> Dumper for AsmDumper<W> {
         //trace!("{:?}: reference_object_sized_position({}, {}, {}, {})", self.current_pointer, Address::new(value), start, size, alignment);
 
         // We already have a record for this object
-        if self.dumped_objects.contains_key(&start) || self.pending_objects.contains_key(&start) {
+        if self.dumped_objects.contains_key(&start) || self.pending_objects.contains_key(&start) || self.dumping_objects.contains_key(&start) {
             // Do nothing
             debug_only!({
                 let object = if self.dumped_objects.contains_key(&start) {
                     self.dumped_objects.get(&start).unwrap()
-                } else { // self.pending_objects.contains_key(&start)
+                } else if self.pending_objects.contains_key(&start) {
                     self.pending_objects.get(&start).unwrap()
+                } else { // self.dumping_objects.contains_key(&start)
+                    self.dumping_objects.get(&start).unwrap()
                 };
                 debug_assert!(object.size == size && object.alignment == alignment,
                     "conflicting layouts for object [{}], got size = {} and {}, and alignment = {} and {}",
@@ -414,6 +423,8 @@ impl<W: Write> Dumper for AsmDumper<W> {
                 "the object range [{}, {}) overlaps with a complete object", start, start+size);
             debug_assert!(get_overlap(start, start+size, &mut self.pending_objects).count() == 0,
                 "the object range [{}, {}) overlaps with a complete object", start, start+size);
+            debug_assert!(get_overlap(start, start+size, &mut self.dumping_objects).count() == 0,
+                "the object range [{}, {}) overlaps with a complete object", start, start+size);
 
             self.pending_objects.insert(start, ObjectInfo::new(value, dump, position, size, alignment, label));
         }
@@ -433,10 +444,13 @@ impl<W: Write> Dumper for AsmDumper<W> {
             Some(value) => value.label.offset(ptr - value.start),
             None => match get_complete_object(ptr, &self.pending_objects) {
                 Some(value) => value.label.offset(ptr - value.start),
-                None => {
-                    // Just create a temporary label, and record our pointer
-                    self.pending_references.insert(ptr);
-                    AsmLabel::new(format!(".Lptr_{}", ptr))
+                None => match get_complete_object(ptr, &self.dumping_objects) {
+                    Some(value) => value.label.offset(ptr - value.start),
+                    None => {
+                        // Just create a temporary label, and record our pointer
+                        self.pending_references.insert(ptr);
+                        AsmLabel::new(format!(".Lptr_{}", ptr))
+                    }
                 }
             }
         };
