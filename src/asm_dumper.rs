@@ -111,13 +111,13 @@ pub struct AsmDumper<W: Write>
     debug_indent: Vec<usize>, // How much to indent debugging info by
 
     /// Objects we've already dumped
-    dumped_objects: BTreeMap<Address, ObjectInfo<W>>,
+    dumped_objects: HashMap<Address, ObjectInfo<W>>,
 
     /// A table of all objects we haven't started dumping yet
-    pending_objects: BTreeMap<Address, ObjectInfo<W>>,
+    pending_objects: HashMap<Address, ObjectInfo<W>>,
 
     /// Objects we're currently dumping
-    dumping_objects: BTreeMap<Address, ObjectInfo<W>>,
+    dumping_objects: HashMap<Address, ObjectInfo<W>>,
 
     /// References that haven't been resolved to be relative to a complete object yet
     pending_references: BTreeSet<Address>,
@@ -135,9 +135,9 @@ impl<W: Write> AsmDumper<W> {
             position_offset: 0,
             debug_stack: Vec::new(),
             debug_indent: Vec::new(),
-            dumped_objects: BTreeMap::new(),
-            pending_objects: BTreeMap::new(),
-            dumping_objects: BTreeMap::new(),
+            dumped_objects: HashMap::new(),
+            pending_objects: HashMap::new(),
+            dumping_objects: HashMap::new(),
             pending_references: BTreeSet::new(),
             tags: HashMap::new()
         }
@@ -151,9 +151,9 @@ impl<W: Write> AsmDumper<W> {
             current_directive: AsmDirective::Other,
             current_pointer: Address::null(),
             position_offset: 0,
-            dumped_objects: BTreeMap::new(),
-            pending_objects: BTreeMap::new(),
-            dumping_objects: BTreeMap::new(),
+            dumped_objects: HashMap::new(),
+            pending_objects: HashMap::new(),
+            dumping_objects: HashMap::new(),
             pending_references: BTreeSet::new(),
             tags: HashMap::new()
         }
@@ -199,8 +199,10 @@ impl<W: Write> AsmDumper<W> {
 
         // Still more objects to dump
         while !self.pending_objects.is_empty() {
-            self.dumping_objects.append(&mut self.pending_objects);
-
+            //self.dumping_objects.append(&mut self.pending_objects);
+            for (key, value) in self.pending_objects.drain() {
+                self.dumping_objects.insert(key, value);
+            }
             for (start, value) in self.dumping_objects.clone() {
                 // Remove an element from the map (it dosn't mater which one)
                 // And add a copy to dumped_objects
@@ -216,7 +218,10 @@ impl<W: Write> AsmDumper<W> {
                 self.advance_position(start + value.size);
                 self.write_size(&value.label);
             }
-            self.dumped_objects.append(&mut self.dumping_objects);
+            for (key, value) in self.dumping_objects.drain() {
+                self.dumped_objects.insert(key, value);
+            }
+            //self.dumped_objects.append(&mut self.dumping_objects);
         }
 
         assert!(self.pending_references.is_empty()); // We should've dumped all referenced objects by now
@@ -411,13 +416,14 @@ impl<W: Write> AsmDumper<W> {
 
         // Value is suposed to be a new complete object, so verify it does
         // not overlap with any other complete objects
-        debug_assert!(get_overlap(start, start+size, &mut self.dumped_objects).count() == 0,
-            "the object range [{}, {}) overlaps with a complete object", start, start+size);
-        debug_assert!(get_overlap(start, start+size, &mut self.pending_objects).count() == 0,
-            "the object range [{}, {}) overlaps with a complete object", start, start+size);
-        debug_assert!(get_overlap(start, start+size, &mut self.dumping_objects).count() == 0,
-            "the object range [{}, {}) overlaps with a complete object", start, start+size);
-
+        debug_only!({
+            debug_assert!(get_overlap(start, start+size, &mut self.dumped_objects).count() == 0,
+                "the object range [{}, {}) overlaps with a complete object", start, start+size);
+            debug_assert!(get_overlap(start, start+size, &mut self.pending_objects).count() == 0,
+                "the object range [{}, {}) overlaps with a complete object", start, start+size);
+            debug_assert!(get_overlap(start, start+size, &mut self.dumping_objects).count() == 0,
+                "the object range [{}, {}) overlaps with a complete object", start, start+size);
+        });
         self.pending_objects.insert(start, ObjectInfo::new(value, dump, start, size, alignment, label.clone()));
         label
     }
@@ -574,22 +580,25 @@ impl<W: Write> Dumper for AsmDumper<W> {
 
 // Returns the range of elements in the map that overlaps with [start, end)
 // Only used to check invariants in debug mode
-fn get_overlap<'a, W: Write>(start: Address, end: Address, map: &'a mut BTreeMap<Address, ObjectInfo<W>>)
+#[cfg(debug_assertions)]
+fn get_overlap<'a, W: Write>(start: Address, end: Address, map: &'a mut HashMap<Address, ObjectInfo<W>>)
                       -> RangeMut<'a, Address, ObjectInfo<W>> {
 
-    let start = match map.range_mut(..start).last() {
+    unimplemented!();
+    /*let start = match map.range_mut(..start).last() {
         Some((key, value)) =>
             if value.end() > start { *key }
                 else { start },
         _ => start
     };
-    map.range_mut(start..end)
+    map.range_mut(start..end)*/
 }
 
 // Gets the complete object that contains start
-fn get_complete_object<'a, W: Write>(start: Address, map: &'a BTreeMap<Address, ObjectInfo<W>>)
+fn get_complete_object<'a, W: Write>(start: Address, map: &'a HashMap<Address, ObjectInfo<W>>)
                               -> Option<&'a ObjectInfo<W>> {
-    match map.range((Bound::Unbounded, Bound::Included(start))).last() {
+    unimplemented!();
+    /*match map.range((Bound::Unbounded, Bound::Included(start))).last() {
         Some((_, value)) => {
             if value.end() > start {
                 Some(value)
@@ -598,5 +607,5 @@ fn get_complete_object<'a, W: Write>(start: Address, map: &'a BTreeMap<Address, 
             }
         }
         None => None
-    }
+    }*/
 }
