@@ -74,13 +74,13 @@ impl<W: Write> Clone for ObjectInfo<W> {
 impl<W: Write> ObjectInfo<W> {
     fn end(&self) -> Address { self.start + self.size}
 
-    fn new<T: ?Sized, P: ?Sized>(value: &T, dump: DumpFunction<AsmDumper<W>>, position: &P, size: usize, alignment: usize, label: AsmLabel) -> ObjectInfo<W> {
+    fn new(value: Address, dump: DumpFunction<AsmDumper<W>>, start: Address, size: usize, alignment: usize, label: AsmLabel) -> ObjectInfo<W> {
         ObjectInfo {
-            start: Address::new(position),
+            start: start,
             size: size,
             label: label,
             alignment: alignment,
-            value: Address::new(value),
+            value: value,
             dump: dump,
         }
     }
@@ -176,7 +176,7 @@ impl<W: Write> AsmDumper<W> {
         self.write_size_align(size, alignment);
         self.write_label_declaration(&label);
         let dump_function = Self::get_dump_function::<T>();
-        self.dumped_objects.insert(start, ObjectInfo::<W>::new(value, dump_function, value, size, alignment, label.clone()));
+        self.dumped_objects.insert(start, ObjectInfo::<W>::new(start, dump_function, start, size, alignment, label.clone()));
         self.dump_object_function_here(value, dump_function);
         self.advance_position(start + size); // Add any neccesary padding
         self.write_size(&label);
@@ -350,6 +350,77 @@ impl<W: Write> AsmDumper<W> {
         self.current_pointer += padding;
         //trace!("+ {} -> {:?}", padding, self.current_pointer);
     }
+
+    #[inline]
+    fn get_object(&mut self, start: Address, size: usize, alignment: usize) -> Option<AsmLabel> {
+        let res = match &self.dumped_objects.get(&start) {
+            &Some(value) => Some(value.label.clone()),
+            &None => match &self.pending_objects.get(&start) {
+                &Some(value) => Some(value.label.clone()),
+                &None => match &self.dumping_objects.get(&start) {
+                    &Some(value) => Some(value.label.clone()),
+                    &None => None
+                }
+            }
+        };
+
+        // Check that objects don't overlap
+        debug_only!({
+            let object = if self.dumped_objects.contains_key(&start) {
+                self.dumped_objects.get(&start)
+            } else if self.pending_objects.contains_key(&start) {
+                self.pending_objects.get(&start)
+            } else if self.dumping_objects.contains_key(&start) { // self.dumping_objects.contains_key(&start)
+                self.dumping_objects.get(&start)
+            } else {
+                None
+            };
+
+            if object.is_some() {
+                let object = object.unwrap();
+                debug_assert!(object.size == size && object.alignment == alignment,
+                    "conflicting layouts for object [{}], got size = {} and {}, and alignment = {} and {}",
+                    start, object.size, size, object.alignment, alignment);
+            }
+        });
+
+        res
+    }
+
+    #[inline]
+    fn new_object(&mut self, start: Address, size: usize, alignment: usize, value: Address, dump: DumpFunction<Self>) -> AsmLabel {
+        // This is the first time we've called reference_object on this pointer
+        let label = AsmLabel::new(format!("object_{}", start));
+
+        // For each overlaping pending reference, update it's label and delete it
+        // We can't iterate over a collection and delete simultaneusly
+        // Also the insane borrow checker won't let me call write_equiv within the loop either
+        let mut delete_keys: Vec<Address> = Vec::new(); // A list of keys to delete from pending_references
+        let mut write_equiv_args: Vec<(AsmLabel, AsmLabel)> = Vec::new();
+        for ptr in self.pending_references.range(start..start+size) {
+            // Any reference that overlaps with a complete object should be entirely contained by that object
+            write_equiv_args.push((AsmLabel::new(format!(".Lptr_{}", ptr)), label.offset(*ptr - start)));
+            delete_keys.push(*ptr);
+        }
+        for (source, target) in write_equiv_args {
+            self.write_equiv(source, target);
+        }
+        for key in delete_keys {
+            self.pending_references.remove(&key);
+        };
+
+        // Value is suposed to be a new complete object, so verify it does
+        // not overlap with any other complete objects
+        debug_assert!(get_overlap(start, start+size, &mut self.dumped_objects).count() == 0,
+            "the object range [{}, {}) overlaps with a complete object", start, start+size);
+        debug_assert!(get_overlap(start, start+size, &mut self.pending_objects).count() == 0,
+            "the object range [{}, {}) overlaps with a complete object", start, start+size);
+        debug_assert!(get_overlap(start, start+size, &mut self.dumping_objects).count() == 0,
+            "the object range [{}, {}) overlaps with a complete object", start, start+size);
+
+        self.pending_objects.insert(start, ObjectInfo::new(value, dump, start, size, alignment, label.clone()));
+        label
+    }
 }
 
 // WARNING: Never dump an object of zero size (i.e. such an object should have a trivial dump method)
@@ -381,53 +452,34 @@ impl<W: Write> Dumper for AsmDumper<W> {
 
         //trace!("{:?}: reference_object_sized_position({}, {}, {}, {})", self.current_pointer, Address::new(value), start, size, alignment);
 
-        // We already have a record for this object
-        if self.dumped_objects.contains_key(&start) || self.pending_objects.contains_key(&start) || self.dumping_objects.contains_key(&start) {
-            // Do nothing
-            debug_only!({
-                let object = if self.dumped_objects.contains_key(&start) {
-                    self.dumped_objects.get(&start).unwrap()
-                } else if self.pending_objects.contains_key(&start) {
-                    self.pending_objects.get(&start).unwrap()
-                } else { // self.dumping_objects.contains_key(&start)
-                    self.dumping_objects.get(&start).unwrap()
-                };
-                debug_assert!(object.size == size && object.alignment == alignment,
-                    "conflicting layouts for object [{}], got size = {} and {}, and alignment = {} and {}",
-                    start, object.size, size, object.alignment, alignment);
-            });
-        } else {
-            // This is the first time we've called reference_object on this pointer
-            let label = AsmLabel::new(format!("object_{}", start));
-
-            // For each overlaping pending reference, update it's label and delete it
-            // We can't iterate over a collection and delete simultaneusly
-            // Also the insane borrow checker won't let me call write_equiv within the loop either
-            let mut delete_keys: Vec<Address> = Vec::new(); // A list of keys to delete from pending_references
-            let mut write_equiv_args: Vec<(AsmLabel, AsmLabel)> = Vec::new();
-            for ptr in self.pending_references.range(start..start+size) {
-                // Any reference that overlaps with a complete object should be entirely contained by that object
-                write_equiv_args.push((AsmLabel::new(format!(".Lptr_{}", ptr)), label.offset(*ptr - start)));
-                delete_keys.push(*ptr);
-            }
-            for (source, target) in write_equiv_args {
-                self.write_equiv(source, target);
-            }
-            for key in delete_keys {
-                self.pending_references.remove(&key);
-            };
-
-            // Value is suposed to be a new complete object, so verify it does
-            // not overlap with any other complete objects
-            debug_assert!(get_overlap(start, start+size, &mut self.dumped_objects).count() == 0,
-                "the object range [{}, {}) overlaps with a complete object", start, start+size);
-            debug_assert!(get_overlap(start, start+size, &mut self.pending_objects).count() == 0,
-                "the object range [{}, {}) overlaps with a complete object", start, start+size);
-            debug_assert!(get_overlap(start, start+size, &mut self.dumping_objects).count() == 0,
-                "the object range [{}, {}) overlaps with a complete object", start, start+size);
-
-            self.pending_objects.insert(start, ObjectInfo::new(value, dump, position, size, alignment, label));
+        // If we don't have a record for this object
+        if self.get_object(start, size, alignment).is_none() {
+            self.new_object(start, size, alignment, Address::new(value), dump);
         }
+    }
+
+    /// Record the given complete object as needing to be dumped, and dump a reference to it
+    fn dump_reference_object_function_sized_position_offset_here<T: ?Sized, P: ?Sized>(&mut self, value: &T, dump: DumpFunction<Self>, position: &&P, size: usize, alignment: usize, offset: isize) {
+        assert!(size != 0 && alignment != 0);
+        let start = Address::new(*position);
+        debug_only!(trace!("{empty:indent$} -=>{location}",
+            empty = "",
+            indent = *self.debug_indent.last().unwrap(),
+            location = start));
+
+        //trace!("{:?}: dump_reference_object_sized_position({}, {}, {}, {})", self.current_pointer, Address::new(value), start, size, alignment);
+
+        let label = self.get_object(start, size, alignment);
+
+        // We don't
+        let label = match label {
+            Some(label) => label,
+            None => self.new_object(start, size, alignment, Address::new(value), dump)
+        };
+
+        // Write the label
+        self.write_label_reference(label.offset(offset));
+        self.current_pointer += mem::size_of::<&&P>();
     }
 
     fn dump_reference_here<T: ?Sized>(&mut self, value: &&T) {

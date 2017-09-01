@@ -55,14 +55,12 @@ unsafe impl<'a, T: Dump> Dump for FakeArc<'a, T> {
         // (make it include the real position of inner so that references to inside of inner will be correctly preserved)
         let fake_inner = (Address::new(self.inner) - offset_of!(rust_std::ArcInner<T> => data).get_byte_offset()).to_ref::<rust_std::ArcInner<T>>();
 
-        dumper.reference_object_function_sized_position(
+        dumper.dump_padding(&self.inner);
+        dumper.dump_reference_object_function_sized_position(
             self, // the argument to pass to the dump function
             // The function to use to dump the contents
             unsafe { std::mem::transmute::<fn(&FakeArc<'a, T>, &mut D), DumpFunction<D>>(FakeArc::<'a, T>::dump_inner) },
-            fake_inner, std::mem::size_of::<rust_std::ArcInner<T>>(), std::mem::align_of::<rust_std::ArcInner<T>>());
-
-        dumper.dump_padding(&self.inner);
-        dumper.dump_reference_here(&fake_inner);
+            &fake_inner, std::mem::size_of::<rust_std::ArcInner<T>>(), std::mem::align_of::<rust_std::ArcInner<T>>());
     }
 }
 

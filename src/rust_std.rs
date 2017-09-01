@@ -110,13 +110,12 @@ unsafe impl<T: Dump> Dump for std::vec::Vec<T> {
             // Dosn't point to any real memory, so just dump a raw value
             dumper.dump_value(&fake_self.buf.ptr);
         } else {
-            dumper.reference_object_function_sized_position(
+            dumper.dump_reference_object_function_sized_position(
                 self, // the argument to pass to the dump function
                 // The function to use to dump the contents
                 unsafe { std::mem::transmute::<fn(&Vec<T>, &mut D), DumpFunction<D>>(Vec::<T>::dump_contents) },
-                *fake_self.buf.ptr.as_ref(), // Where to actually dump the data
+                fake_self.buf.ptr.as_ref(), // Where to actually dump the data
                 std::mem::size_of::<T>() * fake_self.buf.cap, std::mem::align_of::<T>());
-            dumper.dump_reference(fake_self.buf.ptr.as_ref());
         }
 
         // Dump the fields of the vector
@@ -304,14 +303,14 @@ for std::collections::HashMap<K, V, S> {
             let align = std::cmp::max(hash_align, pair_align);
 
             let pos = super::Address::new(unsafe{&*fake_self.table.hashes.ptr()});
-            dumper.reference_object_function_sized_position(
+            dumper.dump_padding(&fake_self.table.hashes);
+            dumper.dump_reference_object_function_sized_position_offset_here(
                 fake_self, // the argument to pass to the dump function
                 // The function to use to dump the contents
                 unsafe{std::mem::transmute::<fn(&HashMap<K, V, S>, &mut D), DumpFunction<D>>(
                     HashMap::<K, V, S>::dump_contents)},
-                pos.to_ref::<HashUint>(), // Where to actually dump the data
-                size, align);
-            dumper.dump_object(&fake_self.table.hashes);
+                &pos.to_ref::<HashUint>(), // Where to actually dump the data
+                size, align, fake_self.table.hashes.tag() as isize);
         }
         dumper.dump_object(&fake_self.resize_policy);
     }
@@ -346,7 +345,10 @@ pub struct TaggedHashUintPtr(Unique<HashUint>);
 // and it will point within the tables memory, so the Dumper will store it properly
 rodal_pointer!(TaggedHashUintPtr = *HashUint);
 impl TaggedHashUintPtr {
-    fn ptr(&self) -> *mut HashUint { (self.0.as_ptr() as usize & !1) as *mut HashUint }
+    #[inline] fn tag(&self) -> bool {
+        (self.0.as_ptr() as usize) & 1 == 1
+    }
+    #[inline] fn ptr(&self) -> *mut HashUint { (self.0.as_ptr() as usize & !1) as *mut HashUint }
 }
 // private std::collections::hash_map (src/libstd/collections/hash/table.rs)
 pub type HashUint = usize;
@@ -398,14 +400,12 @@ unsafe impl<T: Dump> Dump for Repr<T> {
             // Dosn't point to any real memory, so just dump a raw value
             dumper.dump_value(&self.data);
         } else {
-            dumper.reference_object_function_sized_position(
+            dumper.dump_reference_object_function_sized_position(
                 self, // the argument to pass to the dump function
                 // The function to use to dump the contents
                 unsafe { std::mem::transmute::<fn(&Repr<T>, &mut D), DumpFunction<D>>(Repr::<T>::dump_contents) },
-                unsafe{self.data.as_ref().unwrap()}, // Where to actually dump the data
+                unsafe{mem::transmute::<&*const T, &&T>(&self.data)}, // Where to actually dump the data
                 std::mem::size_of::<T>() *self.len, std::mem::align_of::<T>());
-
-            dumper.dump_reference(unsafe{mem::transmute::<&*const T, &&T>(&self.data)});
         }
 
         dumper.dump_object(&self.len);
