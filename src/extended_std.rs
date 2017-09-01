@@ -56,7 +56,7 @@ unsafe impl<'a, T: Dump> Dump for FakeArc<'a, T> {
         let fake_inner = (Address::new(self.inner) - offset_of!(rust_std::ArcInner<T> => data).get_byte_offset()).to_ref::<rust_std::ArcInner<T>>();
 
         dumper.dump_padding(&self.inner);
-        dumper.dump_reference_object_function_sized_position(
+        dumper.dump_reference_object_function_sized_position_here(
             self, // the argument to pass to the dump function
             // The function to use to dump the contents
             unsafe { std::mem::transmute::<fn(&FakeArc<'a, T>, &mut D), DumpFunction<D>>(FakeArc::<'a, T>::dump_inner) },
