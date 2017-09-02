@@ -417,12 +417,12 @@ impl<W: Write> AsmDumper<W> {
         // Value is suposed to be a new complete object, so verify it does
         // not overlap with any other complete objects
         debug_only!({
-            debug_assert!(get_overlap(start, start+size, &mut self.dumped_objects).count() == 0,
+            /*debug_assert!(get_overlap(start, start+size, &mut self.dumped_objects).count() == 0,
                 "the object range [{}, {}) overlaps with a complete object", start, start+size);
             debug_assert!(get_overlap(start, start+size, &mut self.pending_objects).count() == 0,
                 "the object range [{}, {}) overlaps with a complete object", start, start+size);
             debug_assert!(get_overlap(start, start+size, &mut self.dumping_objects).count() == 0,
-                "the object range [{}, {}) overlaps with a complete object", start, start+size);
+                "the object range [{}, {}) overlaps with a complete object", start, start+size);*/
         });
         self.pending_objects.insert(start, ObjectInfo::new(value, dump, start, size, alignment, label.clone()));
         label
