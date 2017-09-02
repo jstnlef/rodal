@@ -35,7 +35,12 @@ pub use alloc::*;
 pub use address::*;
 pub use extended_std::*;
 
-pub unsafe trait Dump {
+pub trait Named {
+    fn name()->String;
+}
+pub fn type_name<T: ?Sized + Named>()->String { T::name() }
+
+pub unsafe trait Dump: Named {
     /// Dump this object into the given RODAL Dumper
     /// WARNING: this function should only ever be called by a Dumper
     /// (use dump_object if you want to dump an object whilst dumping another one
@@ -54,9 +59,9 @@ pub trait Dumper {
     // For debugging purposes, records that we are in the dump function 'func_name'
     // for the type 'type_name'
     #[cfg(debug_assertions)]
-    fn debug_record(&mut self, type_name: &str, func_name: &str);
+    fn debug_record<T: ?Sized + Named>(&mut self, func_name: &str);
     #[cfg(not(debug_assertions))]
-    #[inline(always)] fn debug_record(&mut self, _: &str, _: &str) { }
+    #[inline(always)] fn debug_record<T: ?Sized + Named>(&mut self, _: &str) { }
 
     fn set_position(&mut self, new_position: Address);
     /// Returns the address of the end of the last thing the dumper dumped

@@ -78,94 +78,99 @@ macro_rules! debug_only {
 }
 
 #[macro_export]
-macro_rules! rodal_value {
-    ([$($gen:tt)*] $ty:ty) => [ rodal___dump_impl!{(fake_self dumper D) [$($gen)*]$ty {
-        dumper.dump_value(fake_self);
-    } = $ty} ];
+macro_rules! type_name {
+    ($pattern:expr, $($ty:ty),*) => [ format!($pattern, $($crate::type_name::<$ty>()),*) ];
+}
 
-    ($ty:ty) => [ rodal_value!{[] $ty} ];
+#[macro_export]
+macro_rules! rodal_value {
+    ([$($gen:tt)*] $ty:ty [$name:expr]) => [ rodal___dump_impl!{(fake_self dumper D) [$($gen)*]$ty {
+        dumper.dump_value(fake_self);
+    } = $ty [$name]} ];
+
+    ($ty:ty) => [ rodal_value!{[] $ty [stringify!($ty).to_string()]} ];
 }
 
 #[macro_export]
 macro_rules! rodal_object_reference {
-    ([$($gen:tt)*] $ty:ty = &$referant:ty) => [ rodal___dump_impl!{(fake_self dumper D) [$($gen)*]$ty {
+    ([$($gen:tt)*] $ty:ty = &$referant:ty [$name:expr]) => [ rodal___dump_impl!{(fake_self dumper D) [$($gen)*]$ty {
         let reference = unsafe{std::mem::transmute::<&Self, &&($referant)>(fake_self)};
         if std::mem::size_of_val(*reference) > 0 {
             dumper.dump_reference_object(reference);
         }
-    } = $ty} ];
+    } = $ty [$name]} ];
 
-    ($ty:ty = &$referant:ty) => [ rodal_object_reference!{[] $ty = &$referant} ];
+    ($ty:ty = &$referant:ty) => [ rodal_object_reference!{[] $ty = &$referant [stringify!($ty).to_string()]} ];
 }
 
 #[macro_export]
 macro_rules! rodal_pointer {
-    ([$($gen:tt)*] $ty:ty = *$referant:ty) => [rodal___dump_impl!{(fake_self dumper D) [$($gen)*]$ty {
+    ([$($gen:tt)*] $ty:ty = *$referant:ty [$name:expr]) => [rodal___dump_impl!{(fake_self dumper D) [$($gen)*]$ty {
         dumper.dump_reference(unsafe{std::mem::transmute::<&Self, &&($referant)>(fake_self)});
-    } = $ty} ];
+    } = $ty [$name]} ];
 
-    ($ty:ty = *$referant:ty) => [ rodal_pointer!{[] $ty = *$referant} ];
+    ($ty:ty = *$referant:ty) => [ rodal_pointer!{[] $ty = *$referant [stringify!($ty).to_string()]} ];
 }
 
 #[macro_export]
 macro_rules! rodal_object {
-    ([$($gen:tt)*] $ty:ty = $source:ty) => [ rodal___dump_impl!{(fake_self dumper D) [$($gen)*]$ty {
+    ([$($gen:tt)*] $ty:ty = $source:ty [$name:expr]) => [ rodal___dump_impl!{(fake_self dumper D) [$($gen)*]$ty {
         dumper.dump_object(fake_self);
-    } = $source} ];
+    } = $source [$name]} ];
 
-    ($ty:ty = $source:ty) => [ rodal_object!{[] $ty = $source} ];
+    ($ty:ty = $source:ty) => [ rodal_object!{[] $ty = $source [stringify!($ty).to_string()]} ];
 }
 
 
 #[macro_export]
 macro_rules! rodal_struct {
-    ([$($gen:tt)*] $ty:ty {$($field:tt),*} = $source:ty) => [rodal___dump_impl!{(fake_self dumper D) [$($gen)*] $ty {
+    ([$($gen:tt)*] $ty:ty {$($field:tt),*} = $source:ty [$name:expr]) => [rodal___dump_impl!{(fake_self dumper D) [$($gen)*] $ty {
         $(dumper.dump_object(&fake_self.$field);)*;
-    } = $source} ];
+    } = $source [$name]} ];
 
-    ([$($gen:tt)*] $ty:ty {$($field:tt),*}) => [ rodal_struct!{[$($gen)*]$ty {$($field),*} = $ty} ];
-    ($ty:ty {$($field:tt),*} = $source:ty) => [ rodal_struct!{[] $ty {$($field),*} = $source} ];
-    ($ty:ty {$($field:tt),*}) => [ rodal_struct!{[] $ty {$($field),*} = $ty} ];
+    ([$($gen:tt)*] $ty:ty {$($field:tt),*} [$name:expr]) => [ rodal_struct!{[$($gen)*]$ty {$($field),*} = $ty [$name]} ];
+    ($ty:ty {$($field:tt),*} = $source:ty) => [ rodal_struct!{[] $ty {$($field),*} = $source [stringify!($ty).to_string()]} ];
+    ($ty:ty {$($field:tt),*}) => [ rodal_struct!{[] $ty {$($field),*} = $ty [stringify!($ty).to_string()]} ];
 }
 
 #[macro_export]
 macro_rules! rodal_unordered_struct {
-    ([$($gen:tt)*] $ty:ty {$($field:tt),*} = $source:ty) => [rodal___dump_impl!{(fake_self dumper D) [$($gen)*]$ty {
+    ([$($gen:tt)*] $ty:ty {$($field:tt),*} = $source:ty [$name:expr]) => [rodal___dump_impl!{(fake_self dumper D) [$($gen)*]$ty {
         let mut list = $crate::DumpList::<D>::new();
         $(list.add(&fake_self.$field);)*;
         list.dump(dumper);
-    } = $source} ];
+    } = $source [$name]} ];
 
-    ([$($gen:tt)*] $ty:ty {$($field:tt),*}) => [ rodal_unordered_struct!{[$($gen)*]$ty {$($field),*} = $ty} ];
-    ($ty:ty {$($field:tt),*} = $source:ty) => [ rodal_unordered_struct!{[] $ty {$($field),*} = $source} ];
-    ($ty:ty {$($field:tt),*}) => [ rodal_unordered_struct!{[] $ty {$($field),*} = $ty} ];
+    ([$($gen:tt)*] $ty:ty {$($field:tt),*}) => [ rodal_unordered_struct!{[$($gen)*]$ty {$($field),*} = $ty [$name]} ];
+    ($ty:ty {$($field:tt),*} = $source:ty) => [ rodal_unordered_struct!{[] $ty {$($field),*} = $source [stringify!($ty).to_string()]} ];
+    ($ty:ty {$($field:tt),*}) => [ rodal_unordered_struct!{[] $ty {$($field),*} = $ty [stringify!($ty).to_string()]} ];
 }
 
 #[macro_export]
 macro_rules! rodal_enum {
-    ([$($gen:tt)*] $ty:ident {$($variant:tt),*} = $source:ty) => [ rodal___dump_impl!{(fake_self dumper D) [$($gen)*] $ty {
+    ([$($gen:tt)*] $ty:ident {$($variant:tt),*} = $source:ty [$name:expr]) => [ rodal___dump_impl!{(fake_self dumper D) [$($gen)*] $ty {
         use self::$ty::*;
         match fake_self {
             $(rodal___variant_pattern!($variant) => {rodal___variant_impl!{(fake_self dumper D) $variant}})*
             _ => unimplemented!()
         }
-    } = $source} ];
-    ([$($gen:tt)*] $ty:ident {$($variant:tt),*}) => [ rodal_enum!{[$($gen)*]$ty {$($variant),*} = $ty} ];
-    ($ty:ident {$($variant:tt),*} = $source:ty) => [ rodal_enum!{[] $ty {$($variant),*} = $source} ];
-    ($ty:ident {$($variant:tt),*}) => [ rodal_enum!{[] $ty {$($variant),*} = $ty} ];
+    } = $source [$name]} ];
+    ([$($gen:tt)*] $ty:ident {$($variant:tt),*}) => [ rodal_enum!{[$($gen)*]$ty {$($variant),*} = $ty [$name]} ];
+    ($ty:ident {$($variant:tt),*} = $source:ty) => [ rodal_enum!{[] $ty {$($variant),*} = $source [stringify!($ty).to_string()]} ];
+    ($ty:ident {$($variant:tt),*}) => [ rodal_enum!{[] $ty {$($variant),*} = $ty [stringify!($ty).to_string()]} ];
 }
 #[macro_export]
 macro_rules! rodal_unordered_enum {
-    ([$($gen:tt)*] $ty:ident {$($variant:tt),*} = $source:ty) => [ rodal___dump_impl!{(fake_self dumper D) [$($gen)*] $ty {
+    ([$($gen:tt)*] $ty:ident {$($variant:tt),*} = $source:ty [$name:expr]) => [ rodal___dump_impl!{(fake_self dumper D) [$($gen)*] $ty {
         use self::$ty::*;
         match fake_self {
             $(rodal___variant_pattern!($variant) => {rodal___unordered_variant_impl!{(fake_self dumper D) $variant}})*
             _ => unimplemented!()
         }
-    } = $source} ];
-    ([$($gen:tt)*] $ty:ident {$($variant:tt),*}) => [ rodal_unordered_enum!{[$($gen)*]$ty {$($variant),*} = $ty} ];
-    ($ty:ident {$($variant:tt),*} = $source:ty) => [ rodal_unordered_enum!{[] $ty {$($variant),*} = $source} ];
-    ($ty:ident {$($variant:tt),*}) => [ rodal_unordered_enum!{[] $ty {$($variant),*} = $ty} ];
+    } = $source [$name]} ];
+    ([$($gen:tt)*] $ty:ident {$($variant:tt),*}) => [ rodal_unordered_enum!{[$($gen)*]$ty {$($variant),*} = $ty [$name]} ];
+    ($ty:ident {$($variant:tt),*} = $source:ty) => [ rodal_unordered_enum!{[] $ty {$($variant),*} = $source [stringify!($ty).to_string()]} ];
+    ($ty:ident {$($variant:tt),*}) => [ rodal_unordered_enum!{[] $ty {$($variant),*} = $ty [stringify!($ty).to_string()]} ];
 }
 
 #[macro_export]
@@ -222,15 +227,38 @@ macro_rules! rodal___unordered_variant_impl {
 
 #[macro_export]
 macro_rules! rodal___dump_impl {
-    (($fake_self:ident $dumper:ident $D:ident) [$($gen:tt)*] $ty:ty $body:block = $source:tt) => [
+    (($fake_self:ident $dumper:ident $D:ident) [$($gen:tt)*] $ty:ty $body:block = $source:tt [$name:expr]) => [
         #[allow(unreachable_patterns)]
         #[allow(unused_variables)]
         #[allow(unused_imports)]
         unsafe impl <$($gen)*> $crate::Dump for $ty {
             fn dump<$D: ?std::marker::Sized + $crate::Dumper>(&self, $dumper: &mut $D) {
-                $dumper.debug_record(stringify!($ty), "dump");
+                $dumper.debug_record::<Self>("dump");
                 let $fake_self: &($source) = unsafe{std::mem::transmute(self)};
                 $body
+            }
+        }
+        impl <$($gen)*> $crate::Named for $ty {
+            fn name()->std::string::String{
+                $name
+            }
+        }
+    ];
+}
+
+#[macro_export]
+macro_rules! rodal_named {
+    ([$($gen:tt)*] $ty:ty [$name:expr]) => [
+        impl <$($gen)*> $crate::Named for $ty {
+            fn name()->std::string::String{
+                $name
+            }
+        }
+    ];
+    ($ty:ty) => [
+        impl $crate::Named for $ty {
+            fn name()->std::string::String{
+                stringify!($ty).to_string()
             }
         }
     ];
@@ -242,14 +270,14 @@ macro_rules! rodal_array_impl {
         for i in 0..$len {
             dumper.dump_object(&fake_self[i]);
         }
-    } = [T; $len]} ];
+    } = [T; $len] [format!("[{}, {}]", $crate::type_name::<T>(), $len)]} ];
 }
 
 #[macro_export]
 macro_rules! rodal_tuple_impl {
     ($($n:tt : $ty:ident),*) => [ rodal___dump_impl!{(fake_self dumper D) [$($ty: $crate::Dump),*] ($($ty,)*) {
         $(dumper.dump_object(&fake_self.$n);)*
-    } = ($($ty,)*)} ];
+    } = ($($ty,)*) [format!("{:?}", ($($crate::type_name::<$ty>()),*))]}];
 }
 
 macro_rules! rodal___array_impls {
@@ -275,8 +303,11 @@ rodal___tuple_impls! {
     (0: T0, 1: T1, 2: T2, 3: T3, 4: T4, 5: T5, 6: T6, 7: T7, 8: T8, 9: T9)
     (0: T0, 1: T1, 2: T2, 3: T3, 4: T4, 5: T5, 6: T6, 7: T7, 8: T8, 9: T9, 10: T10)
     (0: T0, 1: T1, 2: T2, 3: T3, 4: T4, 5: T5, 6: T6, 7: T7, 8: T8, 9: T9, 10: T10, 11: T11)
+    // TODO: Can't format (typeids)
+/*
     (0: T0, 1: T1, 2: T2, 3: T3, 4: T4, 5: T5, 6: T6, 7: T7, 8: T8, 9: T9, 10: T10, 11: T11, 12: T12)
-    (0: T0, 1: T1, 2: T2, 3: T3, 4: T4, 5: T5, 6: T6, 7: T7, 8: T8, 9: T9, 10: T10, 11: T11, 12: T12, 13: T13)
+(0: T0, 1: T1, 2: T2, 3: T3, 4: T4, 5: T5, 6: T6, 7: T7, 8: T8, 9: T9, 10: T10, 11: T11, 12: T12, 13: T13)
     (0: T0, 1: T1, 2: T2, 3: T3, 4: T4, 5: T5, 6: T6, 7: T7, 8: T8, 9: T9, 10: T10, 11: T11, 12: T12, 13: T13, 14: T14)
     (0: T0, 1: T1, 2: T2, 3: T3, 4: T4, 5: T5, 6: T6, 7: T7, 8: T8, 9: T9, 10: T10, 11: T11, 12: T12, 13: T13, 14: T14, 15: T15)
+*/
 }

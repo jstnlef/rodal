@@ -24,6 +24,7 @@ pub struct FakeArc<'a, T: 'a> {
     inner: &'a T,
 }
 
+rodal_named!(['a, T: Dump] FakeArc<'a, T> [type_name!("rodal::FakeArc<{}>", T)]);
 impl<'a, T: Dump> FakeArc<'a, T> {
     pub fn new(val: &'a T) -> FakeArc<'a, T> {
         FakeArc::<'a, T> { inner: val }
@@ -31,7 +32,7 @@ impl<'a, T: Dump> FakeArc<'a, T> {
 
     // Dump an ArcInner
     fn dump_inner<D: ?Sized + Dumper>(&self, dumper: &mut D) {
-        dumper.debug_record("FakeArc<'a, T>", "dump_inner");
+        dumper.debug_record::<Self>("dump_inner");
 
         let start = dumper.current_position();
         // Dump the default strong value of 1
@@ -49,7 +50,7 @@ impl<'a, T: Dump> FakeArc<'a, T> {
 }
 unsafe impl<'a, T: Dump> Dump for FakeArc<'a, T> {
     fn dump<D: ?Sized + Dumper>(&self, dumper: &mut D) {
-        dumper.debug_record("FakeArc<'a, T>", "dump");
+        dumper.debug_record::<Self>("dump");
 
         // Where to dump our fake ArcInner
         // (make it include the real position of inner so that references to inside of inner will be correctly preserved)
@@ -77,10 +78,11 @@ impl<K: Eq + std::hash::Hash, V> EmptyHashMap<K, V, std::collections::hash_map::
 // The Eq + Hash and BuildHasher contstratins are needed
 // as almost all of the hashmap's code requires this
 // (without them, we won't even be able to iterate over it's elements)
-unsafe impl<K: Eq + std::hash::Hash, V, S: std::hash::BuildHasher + Dump> Dump
+rodal_named!([K: Eq + std::hash::Hash + Named, V: Named, S: std::hash::BuildHasher + Dump] EmptyHashMap<K, V, S> [type_name!("rodal::EmptyHashMap<{}, {}, {}>", K, V, S)]);
+unsafe impl<K: Eq + std::hash::Hash + Named, V: Named, S: std::hash::BuildHasher + Dump> Dump
 for EmptyHashMap<K, V, S> {
     fn dump<D: ? Sized + Dumper>(&self, dumper: &mut D) {
-        dumper.debug_record("EmptyHashMap<K, V, S>", "dump");
+        dumper.debug_record::<Self>("dump");
         dumper.dump_object(&self.0.hash_builder);
 
         // Dump table
@@ -97,7 +99,7 @@ pub struct EmptyLinkedList<T>(rust_std::LinkedList<T>);
 impl<T> EmptyLinkedList<T> {
     pub fn new() -> Self { unsafe {std::mem::transmute(std::collections::LinkedList::<T>::new()) } }
 }
-rodal_value!([T] EmptyLinkedList<T>);
+rodal_value!([T: Named] EmptyLinkedList<T> [type_name!("rodal::EmptyLinkedList<{}>", T)]);
 
 pub struct EmptyOption<T>(Option<T>);
 
@@ -106,5 +108,5 @@ impl<T> EmptyOption<T> {
         EmptyOption::<T>(None)
     }
 }
-rodal_value!([T] EmptyOption<T>);
+rodal_value!([T: Named] EmptyOption<T> [type_name!("rodal::EmptyOption<{}>", T)]);
 

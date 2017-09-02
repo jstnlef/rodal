@@ -543,7 +543,7 @@ impl<W: Write> Dumper for AsmDumper<W> {
     }
 
     #[cfg(debug_assertions)]
-    fn debug_record(&mut self, type_name: &str, func_name: &str) {
+    fn debug_record<T: ?Sized + Named>(&mut self, func_name: &str) {
         // Print the level, followed by a collen, followed 'level' spaces,
         // followed by the offset (with a sign) a tab, and the type and function name
         let indent = format!("{level}:{empty:level$}{offset:+}:        ",
@@ -553,7 +553,7 @@ impl<W: Write> Dumper for AsmDumper<W> {
         self.debug_indent.push(indent.len());
 
         trace!("{}{type_name}::{func_name}",
-            indent, type_name = type_name, func_name = func_name);
+            indent, type_name = T::name(), func_name = func_name);
         self.debug_stack.push(self.current_pointer);
     }
 

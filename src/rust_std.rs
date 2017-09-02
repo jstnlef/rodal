@@ -17,20 +17,20 @@
 use super::*;
 use std;
 
-rodal_pointer!(['a, T] &'a T = *T);
-rodal_pointer!(['a, T] &'a mut T = *T);
-rodal_pointer!([T] *const T = *T);
-rodal_pointer!([T] * mut T = *T);
-rodal_pointer!([T] std::sync::atomic::AtomicPtr<T> = *T);
+rodal_pointer!(['a, T: Named] &'a T = *T [type_name!("&{}", T)]);
+rodal_pointer!(['a, T: Named] &'a mut T = *T [type_name!("&mut {}", T)]);
+rodal_pointer!([T: Named] *const T = *T [type_name!("*const {}", T)]);
+rodal_pointer!([T: Named] * mut T = *T [type_name!("*mut {}", T)]);
+rodal_pointer!([T: Named] std::sync::atomic::AtomicPtr<T> = *T [type_name!("std::sync::atomic::AtomicPtr<{}>", T)]);
 
-rodal_object_reference!([T: Dump] std::boxed::Box<T> = &T);
-rodal_object!([T: Dump] std::boxed::Box<[T]> = Repr<T>);
+rodal_object_reference!([T: Dump] std::boxed::Box<T> = &T [type_name!("std::boxed::Box<{}>", T)]);
+rodal_object!([T: Dump] std::boxed::Box<[T]> = Repr<T> [type_name!("std::boxed::Box<[{}]>", T)]);
 rodal_object!(std::boxed::Box<str> = Repr<u8>);
 
 rodal_value!(std::sync::atomic::AtomicBool);
 rodal_value!(std::sync::atomic::AtomicIsize);
 rodal_value!(std::sync::atomic::AtomicUsize);
-rodal_value!([T: ?Sized] std::marker::PhantomData<T>); // Should be empty
+rodal_value!([T: ?Sized + Named] std::marker::PhantomData<T> [type_name!("std::marker::PhantomData<{}>", T)]); // Should be empty
 
 // Primitives, not declared here
 rodal_value!(bool);
@@ -50,9 +50,10 @@ rodal_value!(char);
 
 //rodal_enum!([T: Dump] std::option::Option<T>{None, (Some: val)});
 // This is implemented manually as the rodal_enum! macro dosn't work with generics...
+rodal_named!([T: Named] std::option::Option<T> [type_name!("std::option::Option<{}>", T)]);
 unsafe impl<T: Dump> Dump for std::option::Option<T> {
     fn dump<D: ?Sized + Dumper>(&self, dumper: &mut D) {
-        dumper.debug_record("std::option::Option<T>", "dump");
+        dumper.debug_record::<Self>("dump");
         match self {
             &Some(ref val) => {
                 dumper.dump_prefix_value(val);
@@ -71,8 +72,6 @@ unsafe impl<T: Dump> Dump for std::option::Option<T> {
 /// unstable core::nonzero (libcore/nonzero.rs)
 struct NonZero<T>(pub T); // T: core::nonzero::Zeroable
 
-
-
 /// unstable core::ptr (libcore/ptr.rs)
 struct Unique<T: ?Sized> {pub pointer: NonZero<*const T>, pub _marker: std::marker::PhantomData<T>}
 // Utility impls to make unique more usable
@@ -85,23 +84,24 @@ impl<T> Unique<T> {
     pub fn as_ptr(&self) -> *const T { unsafe{std::mem::transmute_copy(self)} }
 }
 
-rodal_object_reference!([T: ?Sized + Dump] (Unique<T>) = &T);
-rodal_object!([T: Dump] Unique<[T]> = Repr<T>);
+rodal_object_reference!([T: ?Sized + Dump] (Unique<T>) = &T [type_name!("core::ptr::Unique<{}>", T)]);
+rodal_object!([T: Dump] Unique<[T]> = Repr<T> [type_name!("coreptr::Unique<[{}]>", T)]);
 rodal_object!(Unique<str> = Repr<u8>);
 
 /// unstable core::ptr (libcore/ptr.rs)
 struct Shared<T: ?Sized> { pub pointer: NonZero<*const T>, _marker: std::marker::PhantomData<T> }
-rodal_object_reference!([T: ?Sized + Dump] Shared<T> = &T);
-rodal_object!([T: Dump] Shared<[T]> = Repr<T>);
+rodal_object_reference!([T: ?Sized + Dump] Shared<T> = &T [type_name!("core::ptr::Shared<{}>", T)]);
+rodal_object!([T: Dump] Shared<[T]> = Repr<T> [type_name!("core::ptr::Shared<[{}]>", T)]);
 rodal_object!(Shared<str> = Repr<u8>);
 
 // public collections::vec (libcollections/vec.rs)
 pub struct Vec<T> { buf: RawVec<T>, pub len: usize }
 // unstable alloc::raw_vec (liballoc/rawvec.rs)
 struct RawVec<T> { pub ptr: Unique<T>, pub cap: usize }
+rodal_named!([T: Named] std::vec::Vec<T> [type_name!("std::vec::Vec<{}>", T)]);
 unsafe impl<T: Dump> Dump for std::vec::Vec<T> {
     fn dump<D: ?Sized + Dumper>(&self, dumper: &mut D) {
-        dumper.debug_record("std::vec::Vec<T>", "dump");
+        dumper.debug_record::<Self>("dump");
 
         // Transmute to the fake_std version so we can access private fields
         let fake_self: &Vec<T> = unsafe{std::mem::transmute(self)};
@@ -123,9 +123,11 @@ unsafe impl<T: Dump> Dump for std::vec::Vec<T> {
         dumper.dump_object(&fake_self.len);
     }
 }
+
+rodal_named!([T: Named] Vec<T> [type_name!("std::vec::Vec<{}>", T)]);
 impl <T: Dump> Vec<T> {
     fn dump_contents<D: ? Sized + Dumper>(&self, dumper: &mut D) {
-        dumper.debug_record("std::vec::Vec<T>", "dump_contents");
+        dumper.debug_record::<Self>("dump_contents");
         let real_self: &std::vec::Vec<T> = unsafe{mem::transmute(self)};
         dumper.set_position(Address::from_ptr(self.buf.ptr.as_ptr()));
         for val in real_self {
@@ -139,11 +141,11 @@ rodal_struct!(std::string::String{vec} = String);
 
 // public alloc::arc (liballoc/arc.rs)
 pub struct Arc<T: ?Sized> { ptr: Shared<ArcInner<T>>, }
-rodal_struct!([T: ?Sized + Dump] std::sync::Arc<T>{ptr} = Arc<T>);
+rodal_struct!([T: ?Sized + Dump] std::sync::Arc<T>{ptr} = Arc<T> [type_name!("std::sync::Arc<{}>", T)]);
 
 // private alloc::arc (liballoc/arc.rs)
 pub struct ArcInner<T: ?Sized> { pub strong: std::sync::atomic::AtomicUsize, pub weak: std::sync::atomic::AtomicUsize, pub data: T, }
-rodal_struct!([T: ?Sized + Dump] ArcInner<T>{strong, weak, data});
+rodal_struct!([T: ?Sized + Dump] ArcInner<T>{strong, weak, data} [type_name!("alloc::arc<{}>", T)]);
 
 // private std::sys::poision (libstd/syscommon/poison.rs)
 struct Flag { pub failed: std::sync::atomic::AtomicBool }
@@ -151,7 +153,7 @@ rodal_value!(Flag);
 
 // public core::cell (libcore/cell.rs)
 pub struct UnsafeCell<T: ?Sized> { pub value: T }
-rodal_struct!([T: ?Sized + Dump] UnsafeCell<T>{value});
+rodal_struct!([T: ?Sized + Dump] UnsafeCell<T>{value} [type_name!("std::cell::UnsafeCell<{}>", T)]);
 
 // public std::sync (libstd/sync/rwlock.rs)
 pub struct RwLock<T: ?Sized> {
@@ -161,9 +163,10 @@ pub struct RwLock<T: ?Sized> {
 }
 
 // Acquires a read lock on it's contents before it dumps
+rodal_named!([T: ?Sized + Named] std::sync::RwLock<T> [type_name!("std::sync::RwLock<{}>", T)]);
 unsafe impl<T: ?Sized + Dump> Dump for std::sync::RwLock<T> {
     fn dump<D: ?Sized + Dumper>(&self, dumper: &mut D) {
-        dumper.debug_record("std::sync::RwLock<T>", "dump");
+        dumper.debug_record::<Self>("dump");
         use std::ops::Deref;
         // Acquire a read lock to self (just so no one tries to modify the contents whilst we try and dump it)
         let lock = self.read().unwrap();
@@ -184,9 +187,10 @@ pub struct Mutex<T: ?Sized> {
     pub data: UnsafeCell<T>,
 }
 
+rodal_named!([T: ?Sized + Named] std::sync::Mutex<T> [type_name!("std::sync::Mutex<{}>", T)]);
 unsafe impl<T: ?Sized + Dump> Dump for std::sync::Mutex<T> {
     fn dump<D: ?Sized + Dumper>(&self, dumper: &mut D) {
-        dumper.debug_record("std::sync::RwLock<T>", "dump");
+        dumper.debug_record::<Self>("dump");
         use std::ops::Deref;
         // Acquire a lock to self (just so no one tries to modify the contents whilst we try and dump it)
 
@@ -239,9 +243,10 @@ mod sys {
     pub struct Mutex { pub inner: super::UnsafeCell<libc::pthread_mutex_t> }
 }
 
+rodal_named!(sys::RWLock);
 unsafe impl Dump for sys::RWLock {
     fn dump<D: ?Sized + Dumper>(&self, dumper: &mut D) {
-        dumper.debug_record("sys::RWLock", "dump");
+        dumper.debug_record::<Self>("dump");
 
         // Create a new std::sync::RwLock, and dump its value of inner
         // (so that when we load the dump the RwLock will have it's initial state)
@@ -249,9 +254,11 @@ unsafe impl Dump for sys::RWLock {
         dumper.dump_value_here(lock.inner.as_ref());
     }
 }
+
+rodal_named!(sys::Mutex);
 unsafe impl Dump for sys::Mutex {
     fn dump<D: ?Sized + Dumper>(&self, dumper: &mut D) {
-        dumper.debug_record("sys::Mutex", "dump");
+        dumper.debug_record::<Self>("dump");
 
         // Create a new std::sync::RwLock, and dump its value of inner
         // (so that when we load the dump the RwLock will have it's initial state)
@@ -273,10 +280,12 @@ pub struct HashMap<K, V, S = std::collections::hash_map::RandomState> {
 // The Eq + Hash and BuildHasher contstratins are needed
 // as almost all of the hashmap's code requires this
 // (without them, we won't even be able to iterate over it's elements)
+
+rodal_named!([K: Eq + std::hash::Hash + Named, V: Named, S: std::hash::BuildHasher + Named] std::collections::HashMap<K, V, S> [type_name!("std::collections::HashMap<{}, {}, {}>", K, V, S)]);
 unsafe impl<K: Eq + std::hash::Hash + Dump, V: Dump, S: std::hash::BuildHasher + Dump> Dump
 for std::collections::HashMap<K, V, S> {
     fn dump<D: ?Sized + Dumper>(&self, dumper: &mut D) {
-        dumper.debug_record("std::collections::HashMap<K, V, S>", "dump");
+        dumper.debug_record::<Self>("dump");
         // Transmute to the fake_std version so we can access private fields
         let fake_self: &HashMap<K, V, S> = unsafe{std::mem::transmute(self)};
 
@@ -315,10 +324,11 @@ for std::collections::HashMap<K, V, S> {
         dumper.dump_object(&fake_self.resize_policy);
     }
 }
+rodal_named!([K: Eq + std::hash::Hash + Named, V: Named, S: std::hash::BuildHasher + Named] HashMap<K, V, S> [type_name!("std::collections::HashMap<{}, {}, {}>", K, V, S)]);
 impl<K: Eq + std::hash::Hash + Dump, V: Dump, S: std::hash::BuildHasher + Dump>
 HashMap<K, V, S> {
     fn dump_contents<D: ?Sized + Dumper>(&self, dumper: &mut D) {
-        dumper.debug_record("std::collections::HashMap<K, V, S>", "dump_contents");
+        dumper.debug_record::<Self>("dump_contents");
         let real_pos = unsafe{&*self.table.hashes.ptr()};
         dumper.set_position(Address::new(real_pos));
         // Dump the stored hashes
@@ -373,7 +383,7 @@ pub struct LinkedList<T> {
     len: usize,
     marker: std::marker::PhantomData<Box<Node<T>>>,
 }
-rodal_struct!([T: Dump] std::collections::linked_list::LinkedList<T>{head, tail, len, marker} = LinkedList<T>);
+rodal_struct!([T: Dump] std::collections::linked_list::LinkedList<T>{head, tail, len, marker} = LinkedList<T> [type_name!("std::collections::linked_list::LinkedList<{}>", T)]);
 
 // private std::collections::linked_list (src/libcollections/linked_list.rs)
 struct Node<T> {
@@ -381,7 +391,7 @@ struct Node<T> {
     prev: Shared<Node<T>>, // Option
     element: T,
 }
-rodal_struct!([T: Dump] Node<T>{next, prev, element});
+rodal_struct!([T: Dump] Node<T>{next, prev, element} [type_name!("collections::linked_list::Node<{}>", T)]);
 
 // std::sync::Mutex
 
@@ -393,9 +403,10 @@ struct Repr<T> {
     pub data: *const T,
     pub len: usize,
 }
+rodal_named!([T: Named] Repr<T> [type_name!("core::slice::Repr<{}>", T)]);
 unsafe impl<T: Dump> Dump for Repr<T> {
     fn dump<D: ?Sized + Dumper>(&self, dumper: &mut D) {
-        dumper.debug_record("Repr<T>", "dump");
+        dumper.debug_record::<Self>("dump");
         if std::mem::size_of::<T>()*self.len == 0 {
             // Dosn't point to any real memory, so just dump a raw value
             dumper.dump_value(&self.data);
@@ -413,7 +424,7 @@ unsafe impl<T: Dump> Dump for Repr<T> {
 }
 impl <T: Dump> Repr<T> {
     fn dump_contents<D: ?Sized + Dumper>(&self, dumper: &mut D) {
-        dumper.debug_record("Repr<T>", "dump_contents");
+        dumper.debug_record::<Self>("dump_contents");
         let real_self: &&[T] = unsafe{mem::transmute(self)};
 
         dumper.set_position(Address::from_ptr(self.data));
@@ -424,12 +435,15 @@ impl <T: Dump> Repr<T> {
     }
 }
 
-rodal_struct!(['a, T: Dump] &'a [T]{data, len} = Repr<T>);
-rodal_struct!(['a, T: Dump] &'a mut [T]{data, len} = Repr<T>);
-rodal_struct!([T: Dump] *const [T]{data, len} = Repr<T>);
-rodal_struct!([T: Dump] *mut [T]{data, len} = Repr<T>);
+rodal_struct!(['a, T: Dump] &'a [T]{data, len} = Repr<T> [type_name!("&[{}]", T)]);
+rodal_struct!(['a, T: Dump] &'a mut [T]{data, len} = Repr<T> [type_name!("&mut [{}]", T)]);
+rodal_struct!([T: Dump] *const [T]{data, len} = Repr<T> [type_name!("*const [{}]", T)]);
+rodal_struct!([T: Dump] *mut [T]{data, len} = Repr<T> [type_name!("*mut [{}]", T)]);
 
-rodal_struct!(['a] &'a str{data, len} = Repr<u8>);
-rodal_struct!(['a] &'a mut str{data, len} = Repr<u8>);
+rodal_struct!(['a] &'a str{data, len} = Repr<u8> ["& str".to_string()]);
+rodal_struct!(['a] &'a mut str{data, len} = Repr<u8> ["&mut str".to_string()]);
 rodal_struct!(*const str{data, len} = Repr<u8>);
 rodal_struct!(*mut str{data, len} = Repr<u8>);
+
+// Just giving things names
+rodal_named!([T: Named] std::thread::JoinHandle<T> [type_name!("std::thread::JoinHandle<{}>", T)]);
