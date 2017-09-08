@@ -12,12 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#![feature(allocator_api)]
-#![feature(alloc)]
-#![feature(alloc_system)]
-#![feature(global_allocator)]
-#![feature(const_fn)]
-
 extern crate libc;
 extern crate num;
 
