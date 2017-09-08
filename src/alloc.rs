@@ -17,7 +17,7 @@ use std::mem;
 use super::*;
 use std::sync::atomic::{Ordering, fence};
 
-fn is_rodal_dump(ptr: *const libc::c_void) -> bool {
+pub fn is_rodal_dump<T>(ptr: *const T) -> bool {
     let ptr = Address::from_ptr(ptr);
     match unsafe{RODAL_BOUND} {
         Some((start, end)) => start <= ptr && ptr < end,
@@ -25,39 +25,63 @@ fn is_rodal_dump(ptr: *const libc::c_void) -> bool {
     }
 }
 
-const FREE_NAME: &'static [u8] = b"free\0";
-const REALLOC_NAME: &'static [u8] = b"realloc\0";
-static mut REAL_FREE: Option<extern fn(*mut libc::c_void)> = None;
-static mut REAL_REALLOC: Option<extern fn(*mut libc::c_void, libc::size_t)->(*mut libc::c_void)> = None;
+extern crate alloc;
+extern crate alloc_system;
+use self::alloc::heap::{Alloc, AllocErr, Layout, Excess, CannotReallocInPlace};
 
-// This should be the first hing called in main
-#[no_mangle]
-pub unsafe extern fn rodal_init_deallocate() {
-    REAL_FREE = Some(mem::transmute(libc::dlsym(libc::RTLD_NEXT, FREE_NAME.as_ptr() as *const libc::c_char)));
-    assert!(REAL_FREE.is_some());
-    REAL_REALLOC = Some(mem::transmute(libc::dlsym(libc::RTLD_NEXT, REALLOC_NAME.as_ptr() as *const libc::c_char)));
-    assert!(REAL_REALLOC.is_some());
+#[global_allocator]
+pub static RODAL_ALLOC: RodalAlloc = RodalAlloc::new();
 
-    // Make sure other threads (when they start) see the writes to the global variables
-    fence(Ordering::SeqCst);
-}
-#[no_mangle]
-pub unsafe extern fn rodal_free(ptr: *mut libc::c_void) {
-    if !is_rodal_dump(ptr) {
-        (REAL_FREE.unwrap())(ptr);
+pub struct RodalAlloc{sys: std::cell::UnsafeCell<alloc_system::System>}
+
+impl RodalAlloc {
+    const fn new() -> RodalAlloc {
+        RodalAlloc{sys: std::cell::UnsafeCell::new(alloc_system::System{})}
+    }
+    fn get_sys(&self) -> &mut alloc_system::System {
+        unsafe { std::mem::transmute(self.sys.get())}
     }
 }
-#[no_mangle]
-pub unsafe extern fn rodal_realloc(ptr: *mut libc::c_void, new_size: libc::size_t)->*mut libc::c_void {
-    if is_rodal_dump(ptr) {
-        let old_size = *(Address::from_ptr(ptr) - mem::size_of::<libc::size_t>()).to_ref::<usize>();
-        if old_size >= new_size {
-            ptr // Allocated area is large enough
-        } else {
-            // Have to copy to a new (really malloced) area
-            libc::memcpy(libc::malloc(new_size), ptr, old_size)
+unsafe impl Sync for RodalAlloc {}
+unsafe impl Send for RodalAlloc {}
+
+unsafe impl Alloc for RodalAlloc {
+    #[inline] unsafe fn alloc(&mut self, layout: Layout) -> Result<*mut u8, AllocErr> { (&*self).alloc(layout) }
+    #[inline] unsafe fn alloc_zeroed(&mut self, layout: Layout) -> Result<*mut u8, AllocErr> { (&*self).alloc_zeroed(layout) }
+    #[inline] unsafe fn dealloc(&mut self, ptr: *mut u8, layout: Layout) { (&*self).dealloc(ptr, layout) }
+    #[inline] unsafe fn realloc(&mut self, ptr: *mut u8, old_layout: Layout, new_layout: Layout) -> Result<*mut u8, AllocErr> { (&*self).realloc(ptr, old_layout, new_layout) }
+    #[inline] fn oom(&mut self, err: AllocErr) -> ! { (&*self).oom(err) }
+}
+
+unsafe impl<'a> Alloc for &'a RodalAlloc {
+    #[inline] unsafe fn alloc(&mut self, layout: Layout) -> Result<*mut u8, AllocErr> { self.get_sys().alloc(layout) }
+
+    #[inline] unsafe fn alloc_zeroed(&mut self, layout: Layout) -> Result<*mut u8, AllocErr> { self.get_sys().alloc_zeroed(layout) }
+
+    #[inline] unsafe fn dealloc(&mut self, ptr: *mut u8, layout: Layout) {
+        if !is_rodal_dump(ptr) {
+            self.get_sys().dealloc(ptr, layout);
         }
-    } else {
-        (REAL_REALLOC.unwrap())(ptr, new_size)
+    }
+
+    #[inline] unsafe fn realloc(&mut self, ptr: *mut u8, old_layout: Layout, new_layout: Layout) -> Result<*mut u8, AllocErr> {
+        if is_rodal_dump(ptr) {
+            if old_layout.size() >= new_layout.size() {
+                Ok(ptr) // Allocated area is large enough
+            } else {
+                // Have to copy to a new (really allocated) area
+                let res = self.alloc(new_layout.clone());
+                if let Ok(new_ptr) = res {
+                    let size = std::cmp::min(old_layout.size(), new_layout.size());
+                    std::ptr::copy_nonoverlapping(ptr, new_ptr, size);
+                }
+                res
+            }
+        } else {
+            self.get_sys().realloc(ptr, old_layout, new_layout)
+        }
+    }
+    #[inline] fn oom(&mut self, err: AllocErr) -> ! {
+        self.get_sys().oom(err)
     }
 }
