@@ -41,6 +41,16 @@ pub unsafe extern fn rodal_init_deallocate() {
     // Make sure other threads (when they start) see the writes to the global variables
     fence(Ordering::SeqCst);
 }
+
+#[no_mangle]
+pub unsafe extern fn rodal_init_deallocate_explicit(free: extern fn(*mut libc::c_void), realloc: extern fn(*mut libc::c_void, libc::size_t)->(*mut libc::c_void)) {
+    REAL_FREE = Some(free);
+    assert!(REAL_FREE.is_some());
+    REAL_REALLOC = Some(realloc);
+    assert!(REAL_REALLOC.is_some());
+
+    fence(Ordering::Release);
+}
 #[no_mangle]
 pub unsafe extern fn rodal_free(ptr: *mut libc::c_void) {
     if !is_rodal_dump(ptr) {

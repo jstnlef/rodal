@@ -12,12 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeSet, HashMap};
 use std::io::Write;
 use std::fmt;
-use std::collections::btree_map::RangeMut;
 use std::mem;
-use std::collections::Bound;
 use num::integer::lcm;
 use super::*;
 
@@ -72,8 +70,6 @@ impl<W: Write> Clone for ObjectInfo<W> {
     }
 }
 impl<W: Write> ObjectInfo<W> {
-    fn end(&self) -> Address { self.start + self.size}
-
     fn new(value: Address, dump: DumpFunction<AsmDumper<W>>, start: Address, size: usize, alignment: usize, label: AsmLabel) -> ObjectInfo<W> {
         ObjectInfo {
             start: start,
@@ -580,27 +576,26 @@ impl<W: Write> Dumper for AsmDumper<W> {
 
 // Returns the range of elements in the map that overlaps with [start, end)
 // Only used to check invariants in debug mode
-#[cfg(debug_assertions)]
+/*#[cfg(debug_assertions)]
 fn get_overlap<'a, W: Write>(start: Address, end: Address, map: &'a mut HashMap<Address, ObjectInfo<W>>)
                       -> RangeMut<'a, Address, ObjectInfo<W>> {
 
-    unimplemented!();
-    /*let start = match map.range_mut(..start).last() {
+    let start = match map.range_mut(..start).last() {
         Some((key, value)) =>
-            if value.end() > start { *key }
+            if value.start + value.size > start { *key }
                 else { start },
         _ => start
     };
-    map.range_mut(start..end)*/
-}
+    map.range_mut(start..end)
+}*/
 
 // Gets the complete object that contains start
-fn get_complete_object<'a, W: Write>(start: Address, map: &'a HashMap<Address, ObjectInfo<W>>)
+fn get_complete_object<'a, W: Write>(_ /*start*/: Address, _ /*map*/: &'a HashMap<Address, ObjectInfo<W>>)
                               -> Option<&'a ObjectInfo<W>> {
     unimplemented!();
     /*match map.range((Bound::Unbounded, Bound::Included(start))).last() {
         Some((_, value)) => {
-            if value.end() > start {
+            if value.start + value.size > start {
                 Some(value)
             } else {
                 None
