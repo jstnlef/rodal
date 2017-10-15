@@ -97,7 +97,15 @@ rodal_object!(Shared<str> = Repr<u8>);
 // public collections::vec (libcollections/vec.rs)
 pub struct Vec<T> { buf: RawVec<T>, pub len: usize }
 // unstable alloc::raw_vec (liballoc/rawvec.rs)
-struct RawVec<T> { pub ptr: Unique<T>, pub cap: usize }
+/* NOTE: in rust v1.21 the definition was change to:
+pub struct RawVec<T, A: Alloc = Heap> {
+    ptr: Unique<T>,
+    cap: usize,
+    a: A,
+}
+However, it is currently only used be Vec (which dosn't provide an ovveride for 'A'), and 'Heap' is an empty struct
+*/
+struct RawVec<T, A: Alloc = Heap> { pub ptr: Unique<T>, pub cap: usize }
 rodal_named!([T: Named] std::vec::Vec<T> [type_name!("std::vec::Vec<{}>", T)]);
 unsafe impl<T: Dump> Dump for std::vec::Vec<T> {
     fn dump<D: ?Sized + Dumper>(&self, dumper: &mut D) {
@@ -378,8 +386,8 @@ impl<K, V> RawTable<K, V> {
 // Linked list
 // std::collections::linked_list (src/libcollections/linked_list.rs)
 pub struct LinkedList<T> {
-    head: Shared<Node<T>>,
-    tail: Shared<Node<T>>,
+    head: Shared<Node<T>>, //Option
+    tail: Shared<Node<T>>, //Option
     len: usize,
     marker: std::marker::PhantomData<Box<Node<T>>>,
 }
@@ -392,10 +400,6 @@ struct Node<T> {
     element: T,
 }
 rodal_struct!([T: Dump] Node<T>{next, prev, element} [type_name!("collections::linked_list::Node<{}>", T)]);
-
-// std::sync::Mutex
-
-// Slices...
 
 //private core::slice (src/libcore/slice/mod.rs)
 #[repr(C)] // Repr<T> has the same layout as &[T]
