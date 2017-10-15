@@ -105,7 +105,7 @@ pub struct RawVec<T, A: Alloc = Heap> {
 }
 However, it is currently only used be Vec (which dosn't provide an ovveride for 'A'), and 'Heap' is an empty struct
 */
-struct RawVec<T, A: Alloc = Heap> { pub ptr: Unique<T>, pub cap: usize }
+struct RawVec<T> { pub ptr: Unique<T>, pub cap: usize }
 rodal_named!([T: Named] std::vec::Vec<T> [type_name!("std::vec::Vec<{}>", T)]);
 unsafe impl<T: Dump> Dump for std::vec::Vec<T> {
     fn dump<D: ?Sized + Dumper>(&self, dumper: &mut D) {
