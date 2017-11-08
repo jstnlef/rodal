@@ -284,7 +284,7 @@ macro_rules! rodal___array_impls {
     ($($len:tt)+) => { $(rodal_array_impl!{$len})+ }
 }
 rodal___array_impls!(01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16
-                     17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32);
+                     17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 63 64);
 
 macro_rules! rodal___tuple_impls {
     ($(($( $n:tt: $ty:ident ),*))+) => { $(rodal_tuple_impl!{$($n : $ty),*})+ }
