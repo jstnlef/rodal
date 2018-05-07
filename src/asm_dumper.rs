@@ -12,17 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use super::*;
 use num::integer::lcm;
 use std::collections::{BTreeSet, HashMap};
 use std::fmt;
 use std::io::Write;
 use std::mem;
+use super::*;
 
 #[derive(Clone, Default)]
 struct AsmLabel {
     base: String,
-    offset: isize
+    offset: isize,
 }
 
 impl AsmLabel {
@@ -38,7 +38,7 @@ impl AsmLabel {
     fn offset(&self, offset: isize) -> AsmLabel {
         AsmLabel {
             base: self.base.clone(),
-            offset: self.offset + offset
+            offset: self.offset + offset,
         }
     }
 }
@@ -54,9 +54,11 @@ struct ObjectInfo<W: Write> {
     size: usize,
     alignment: usize,
     label: AsmLabel,
-    value: Address, // The arg to pass to dump
-    dump: DumpFunction<AsmDumper<W>>
+    value: Address,
+    // The arg to pass to dump
+    dump: DumpFunction<AsmDumper<W>>,
 }
+
 impl<W: Write> Clone for ObjectInfo<W> {
     fn clone(&self) -> ObjectInfo<W> {
         ObjectInfo::<W> {
@@ -65,10 +67,11 @@ impl<W: Write> Clone for ObjectInfo<W> {
             alignment: self.alignment,
             label: self.label.clone(),
             value: self.value,
-            dump: self.dump
+            dump: self.dump,
         }
     }
 }
+
 impl<W: Write> ObjectInfo<W> {
     fn new(
         value: Address,
@@ -76,7 +79,7 @@ impl<W: Write> ObjectInfo<W> {
         start: Address,
         size: usize,
         alignment: usize,
-        label: AsmLabel
+        label: AsmLabel,
     ) -> ObjectInfo<W> {
         ObjectInfo {
             start: start,
@@ -84,7 +87,7 @@ impl<W: Write> ObjectInfo<W> {
             label: label,
             alignment: alignment,
             value: value,
-            dump: dump
+            dump: dump,
         }
     }
 }
@@ -95,20 +98,24 @@ const POINTER_DIRECTIVE: &str = ".quad";
 const POINTER_DIRECTIVE: &str = ".xword";
 
 enum AsmDirective {
-    Byte,  // Whe are inside a .byte
-    Ptr,   // We are inside a POINTER_DIRECTIVE
-    Other  // we aran't inside either
+    Byte,
+    // Whe are inside a .byte
+    Ptr,
+    // We are inside a POINTER_DIRECTIVE
+    Other,  // we aran't inside either
 }
 
 pub struct AsmDumper<W: Write> {
     file: W,
     current_directive: AsmDirective,
 
-    current_pointer: Address, // This is the pointer into the output we are dumping
+    current_pointer: Address,
+    // This is the pointer into the output we are dumping
     position_offset: isize,   // The offset from current_pointer to tell objects where we are
 
     #[cfg(debug_assertions)]
-    debug_stack: Vec<Address>, // For debugging only
+    debug_stack: Vec<Address>,
+    // For debugging only
     #[cfg(debug_assertions)]
     debug_indent: Vec<usize>, // How much to indent debugging info by
 
@@ -123,8 +130,9 @@ pub struct AsmDumper<W: Write> {
 
     /// References that haven't been resolved to be relative to a complete object yet
     pending_references: BTreeSet<Address>,
-    tags: HashMap<usize, Vec<*const ()>>
+    tags: HashMap<usize, Vec<*const ()>>,
 }
+
 impl<W: Write> AsmDumper<W> {
     #[cfg(debug_assertions)]
     pub fn new(mut file: W) -> AsmDumper<W> {
@@ -141,7 +149,7 @@ impl<W: Write> AsmDumper<W> {
             pending_objects: HashMap::new(),
             dumping_objects: HashMap::new(),
             pending_references: BTreeSet::new(),
-            tags: HashMap::new()
+            tags: HashMap::new(),
         }
     }
     #[cfg(not(debug_assertions))]
@@ -157,10 +165,10 @@ impl<W: Write> AsmDumper<W> {
             pending_objects: HashMap::new(),
             dumping_objects: HashMap::new(),
             pending_references: BTreeSet::new(),
-            tags: HashMap::new()
+            tags: HashMap::new(),
         }
     }
-    pub fn dump_sized<T: ?Sized + Dump>(&mut self, name: &str, value: &T, size: usize, alignment: usize) -> &mut Self {
+    pub fn dump_sized<T: ? Sized + Dump>(&mut self, name: &str, value: &T, size: usize, alignment: usize) -> &mut Self {
         assert!(alignment != 0);
 
         let start = Address::new(value);
@@ -180,7 +188,7 @@ impl<W: Write> AsmDumper<W> {
         let dump_function = Self::get_dump_function::<T>();
         self.dumped_objects.insert(
             start,
-            ObjectInfo::<W>::new(start, dump_function, start, size, alignment, label.clone())
+            ObjectInfo::<W>::new(start, dump_function, start, size, alignment, label.clone()),
         );
         self.dump_object_function_here(value, dump_function);
         self.advance_position(start + size); // Add any neccesary padding
@@ -252,7 +260,7 @@ impl<W: Write> AsmDumper<W> {
         self.current_directive = new_directive;
     }
     #[inline]
-    pub fn dump<T: ?Sized + Dump>(&mut self, name: &str, value: &T) -> &mut Self {
+    pub fn dump<T: ? Sized + Dump>(&mut self, name: &str, value: &T) -> &mut Self {
         self.dump_sized(name, value, mem::size_of_val(value), mem::align_of_val(value))
     }
     #[inline]
@@ -421,7 +429,7 @@ impl<W: Write> AsmDumper<W> {
         size: usize,
         alignment: usize,
         value: Address,
-        dump: DumpFunction<Self>
+        dump: DumpFunction<Self>,
     ) -> AsmLabel {
         // This is the first time we've called reference_object on this pointer
         let label = AsmLabel::new(format!("object_{}", start));
@@ -455,7 +463,7 @@ impl<W: Write> AsmDumper<W> {
         });
         self.pending_objects.insert(
             start,
-            ObjectInfo::new(value, dump, start, size, alignment, label.clone())
+            ObjectInfo::new(value, dump, start, size, alignment, label.clone()),
         );
         label
     }
@@ -463,7 +471,7 @@ impl<W: Write> AsmDumper<W> {
 
 // WARNING: Never dump an object of zero size (i.e. such an object should have a trivial dump method)
 impl<W: Write> Dumper for AsmDumper<W> {
-    fn tag_reference<T: ?Sized>(&mut self, value: &T, tag: usize) {
+    fn tag_reference<T: ? Sized>(&mut self, value: &T, tag: usize) {
         //trace!("{:?}: TAG_reference({:?}, {})", self.current_pointer, Address::new(value), tag);
         let value = Address::new(value).to_ptr::<()>();
 
@@ -476,13 +484,13 @@ impl<W: Write> Dumper for AsmDumper<W> {
         self.tags.insert(tag, vec![value]); // Add a new list
     }
     /// Record the given complete object as needing to be dumped (because it is referenced)
-    fn reference_object_function_sized_position<T: ?Sized, P: ?Sized>(
+    fn reference_object_function_sized_position<T: ? Sized, P: ? Sized>(
         &mut self,
         value: &T,
         dump: DumpFunction<Self>,
         position: &P,
         size: usize,
-        alignment: usize
+        alignment: usize,
     ) {
         // Objects with zero size should never be referenced
         // If they could be, then there could be ambiguouty if a complete object contains this address,
@@ -508,14 +516,14 @@ impl<W: Write> Dumper for AsmDumper<W> {
     }
 
     /// Record the given complete object as needing to be dumped, and dump a reference to it
-    fn dump_reference_object_function_sized_position_offset_here<T: ?Sized, P: ?Sized>(
+    fn dump_reference_object_function_sized_position_offset_here<T: ? Sized, P: ? Sized>(
         &mut self,
         value: &T,
         dump: DumpFunction<Self>,
         position: &&P,
         size: usize,
         alignment: usize,
-        offset: isize
+        offset: isize,
     ) {
         assert!(size != 0 && alignment != 0);
         let start = Address::new(*position);
@@ -541,7 +549,7 @@ impl<W: Write> Dumper for AsmDumper<W> {
         self.current_pointer += mem::size_of::<&&P>();
     }
 
-    fn dump_reference_here<T: ?Sized>(&mut self, value: &&T) {
+    fn dump_reference_here<T: ? Sized>(&mut self, value: &&T) {
         let ptr = Address::new(*value);
         debug_only!(trace!(
             "{empty:indent$} ->{location}",
@@ -575,7 +583,7 @@ impl<W: Write> Dumper for AsmDumper<W> {
     }
 
     /// Dump the raw value of the object
-    fn dump_value_sized_here<T: ?Sized>(&mut self, value: &T, size: usize) {
+    fn dump_value_sized_here<T: ? Sized>(&mut self, value: &T, size: usize) {
         let value = Address::new(value);
         //trace!("{:?}: dump_value_sized_here({:?}, {})", self.current_pointer, value, size);
 
@@ -598,7 +606,7 @@ impl<W: Write> Dumper for AsmDumper<W> {
     }
 
     #[cfg(debug_assertions)]
-    fn debug_record<T: ?Sized + Named>(&mut self, func_name: &str) {
+    fn debug_record<T: ? Sized + Named>(&mut self, func_name: &str) {
         // Print the level, followed by a collen, followed 'level' spaces,
         // followed by the offset (with a sign) a tab, and the type and function name
         let indent = format!(
@@ -628,7 +636,7 @@ impl<W: Write> Dumper for AsmDumper<W> {
         self.current_pointer + self.position_offset
     }
     // CALL This whenever we execute a dump function...
-    fn dump_object_function_here<T: ?Sized>(&mut self, value: &T, dump: DumpFunction<Self>) {
+    fn dump_object_function_here<T: ? Sized>(&mut self, value: &T, dump: DumpFunction<Self>) {
         let old_offset = self.position_offset;
         let value = Address::new(value);
         self.set_position(value);

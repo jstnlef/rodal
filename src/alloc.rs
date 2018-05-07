@@ -13,9 +13,10 @@
 // limitations under the License.
 
 extern crate libc;
-use super::*;
+
 use std::mem;
 use std::sync::atomic::{fence, Ordering};
+use super::*;
 
 fn is_rodal_dump(ptr: *const libc::c_void) -> bool {
     let ptr = Address::from_ptr(ptr);
@@ -35,12 +36,12 @@ static mut REAL_REALLOC: Option<extern "C" fn(*mut libc::c_void, libc::size_t) -
 pub unsafe extern "C" fn rodal_init_deallocate() {
     REAL_FREE = Some(mem::transmute(libc::dlsym(
         libc::RTLD_NEXT,
-        FREE_NAME.as_ptr() as *const libc::c_char
+        FREE_NAME.as_ptr() as *const libc::c_char,
     )));
     assert!(REAL_FREE.is_some());
     REAL_REALLOC = Some(mem::transmute(libc::dlsym(
         libc::RTLD_NEXT,
-        REALLOC_NAME.as_ptr() as *const libc::c_char
+        REALLOC_NAME.as_ptr() as *const libc::c_char,
     )));
     assert!(REAL_REALLOC.is_some());
 
@@ -51,7 +52,7 @@ pub unsafe extern "C" fn rodal_init_deallocate() {
 #[no_mangle]
 pub unsafe extern "C" fn rodal_init_deallocate_explicit(
     free: extern "C" fn(*mut libc::c_void),
-    realloc: extern "C" fn(*mut libc::c_void, libc::size_t) -> (*mut libc::c_void)
+    realloc: extern "C" fn(*mut libc::c_void, libc::size_t) -> (*mut libc::c_void),
 ) {
     REAL_FREE = Some(free);
     assert!(REAL_FREE.is_some());
@@ -60,12 +61,14 @@ pub unsafe extern "C" fn rodal_init_deallocate_explicit(
 
     fence(Ordering::Release);
 }
+
 #[no_mangle]
 pub unsafe extern "C" fn rodal_free(ptr: *mut libc::c_void) {
     if !is_rodal_dump(ptr) {
         (REAL_FREE.unwrap())(ptr);
     }
 }
+
 #[no_mangle]
 pub unsafe extern "C" fn rodal_realloc(ptr: *mut libc::c_void, new_size: libc::size_t) -> *mut libc::c_void {
     if is_rodal_dump(ptr) {

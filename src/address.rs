@@ -21,12 +21,14 @@ use std::ops::*;
 trait CheckedCast<T> {
     fn checked_cast(self) -> T;
 }
+
 impl CheckedCast<isize> for usize {
     fn checked_cast(self) -> isize {
         assert!(self <= isize::MAX as usize);
         self as isize
     }
 }
+
 impl CheckedCast<usize> for isize {
     fn checked_cast(self) -> usize {
         assert!(self >= 0);
@@ -37,6 +39,7 @@ impl CheckedCast<usize> for isize {
 // Handles pointer operations for us
 #[derive(Eq, Default, Hash, PartialOrd, Clone, Copy, PartialEq, Ord, Debug)]
 pub struct Address(usize);
+
 impl Address {
     pub fn null() -> Address {
         Address(0usize)
@@ -44,10 +47,10 @@ impl Address {
     pub fn max() -> Address {
         Address(!0usize)
     }
-    pub fn new<T: ?Sized>(value: &T) -> Address {
+    pub fn new<T: ? Sized>(value: &T) -> Address {
         Address(value as *const T as *const () as usize)
     }
-    pub fn from_ptr<T: ?Sized>(value: *const T) -> Address {
+    pub fn from_ptr<T: ? Sized>(value: *const T) -> Address {
         Address(value as *const () as usize)
     }
     pub fn to_ref<'a, T>(&self) -> &'a T {
@@ -60,12 +63,14 @@ impl Address {
         self.0 as *const T
     }
 }
+
 impl Add<usize> for Address {
     type Output = Address;
     fn add(self, other: usize) -> Address {
         Address(self.0 + other)
     }
 }
+
 impl Add<isize> for Address {
     type Output = Address;
     fn add(self, other: isize) -> Address {
@@ -81,11 +86,13 @@ impl Add<isize> for Address {
         }
     }
 }
+
 impl AddAssign<usize> for Address {
     fn add_assign(&mut self, other: usize) {
         self.0 += other
     }
 }
+
 impl AddAssign<isize> for Address {
     fn add_assign(&mut self, other: isize) {
         if cfg!(debug_assertions) {
@@ -99,12 +106,14 @@ impl AddAssign<isize> for Address {
         }
     }
 }
+
 impl Sub<usize> for Address {
     type Output = Address;
     fn sub(self, other: usize) -> Address {
         Address(self.0 - other)
     }
 }
+
 impl Sub<isize> for Address {
     type Output = Address;
     fn sub(self, other: isize) -> Address {
@@ -119,11 +128,13 @@ impl Sub<isize> for Address {
         }
     }
 }
+
 impl SubAssign<usize> for Address {
     fn sub_assign(&mut self, other: usize) {
         self.0 -= other
     }
 }
+
 impl SubAssign<isize> for Address {
     fn sub_assign(&mut self, other: isize) {
         if other >= 0 {
@@ -133,6 +144,7 @@ impl SubAssign<isize> for Address {
         }
     }
 }
+
 impl Sub<Address> for Address {
     type Output = isize;
     fn sub(self, other: Address) -> isize {
@@ -155,8 +167,3 @@ impl Display for Address {
         write!(f, "{:#018x}", self.0)
     }
 }
-/*impl Debug for Address {
-    fn fmt(&self, f: &mut Formatter) -> Result {
-        write!(f, "[{:16}]")
-    }
-}*/

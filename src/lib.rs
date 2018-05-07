@@ -12,14 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#[macro_use]
+extern crate field_offset;
 extern crate libc;
-extern crate num;
-
 #[macro_use]
 #[cfg(debug_assertions)]
 extern crate log;
-#[macro_use]
-extern crate field_offset;
+extern crate num;
+
+pub use address::*;
+pub use alloc::*;
+pub use asm_dumper::*;
+pub use asm_loader::*;
+pub use extended_std::*;
+use std::collections::BTreeMap;
+use std::mem;
 
 #[macro_use]
 mod macros;
@@ -29,16 +36,12 @@ mod alloc;
 mod address;
 mod rust_std;
 mod extended_std;
-pub use address::*;
-pub use alloc::*;
-pub use asm_dumper::*;
-pub use asm_loader::*;
-pub use extended_std::*;
 
 pub trait Named {
     fn name() -> String;
 }
-pub fn type_name<T: ?Sized + Named>() -> String {
+
+pub fn type_name<T: ? Sized + Named>() -> String {
     T::name()
 }
 
@@ -47,25 +50,24 @@ pub unsafe trait Dump: Named {
     /// WARNING: this function should only ever be called by a Dumper
     /// (use dump_object if you want to dump an object whilst dumping another one
     /// or use the Dumper's provided methods to start a dump)
-    fn dump<D: ?Sized + Dumper>(&self, dumper: &mut D);
+    fn dump<D: ? Sized + Dumper>(&self, dumper: &mut D);
 }
-
-use std::collections::BTreeMap;
-use std::mem;
 
 #[inline]
-fn as_void_ref<T: ?Sized>(value: &T) -> &() {
+fn as_void_ref<T: ? Sized>(value: &T) -> &() {
     unsafe { mem::transmute(value as *const T as *const ()) }
 }
+
 pub type DumpFunction<D: Dumper> = fn(&(), &mut D);
+
 pub trait Dumper {
     // For debugging purposes, records that we are in the dump function 'func_name'
     // for the type 'type_name'
     #[cfg(debug_assertions)]
-    fn debug_record<T: ?Sized + Named>(&mut self, func_name: &str);
+    fn debug_record<T: ? Sized + Named>(&mut self, func_name: &str);
     #[cfg(not(debug_assertions))]
     #[inline(always)]
-    fn debug_record<T: ?Sized + Named>(&mut self, _: &str) {}
+    fn debug_record<T: ? Sized + Named>(&mut self, _: &str) {}
 
     fn set_position(&mut self, new_position: Address);
     /// Returns the address of the end of the last thing the dumper dumped
@@ -73,31 +75,32 @@ pub trait Dumper {
 
     fn dump_padding_sized(&mut self, size: usize);
     #[inline]
-    fn dump_padding<T: ?Sized>(&mut self, target: &T) {
+    fn dump_padding<T: ? Sized>(&mut self, target: &T) {
         let current = self.current_position();
         let target = Address::new(target);
         assert!(target >= current, "cant move backwards from {} to {}", current, target);
         self.dump_padding_sized((target - current) as usize);
     }
 
-    fn dump_value_sized_here<T: ?Sized>(&mut self, value: &T, size: usize); // Core function
+    fn dump_value_sized_here<T: ? Sized>(&mut self, value: &T, size: usize);
+    // Core function
     #[inline]
-    fn dump_value_sized<T: ?Sized>(&mut self, value: &T, size: usize) {
+    fn dump_value_sized<T: ? Sized>(&mut self, value: &T, size: usize) {
         self.dump_padding(value);
         self.dump_value_sized_here(value, size);
     }
     #[inline]
-    fn dump_value_here<T: ?Sized>(&mut self, value: &T) {
+    fn dump_value_here<T: ? Sized>(&mut self, value: &T) {
         self.dump_value_sized_here(value, mem::size_of_val(value));
     }
     #[inline]
-    fn dump_value<T: ?Sized>(&mut self, value: &T) {
+    fn dump_value<T: ? Sized>(&mut self, value: &T) {
         self.dump_padding(value);
         self.dump_value_sized_here(value, mem::size_of_val(value));
     }
 
     // Gives the reference a tag...
-    fn tag_reference<T: ?Sized>(&mut self, value: &T, tag: usize);
+    fn tag_reference<T: ? Sized>(&mut self, value: &T, tag: usize);
     // Gives the current position a tag
     fn tag(&mut self, tag: usize) {
         let value = self.current_position().to_ref::<()>();
@@ -105,145 +108,146 @@ pub trait Dumper {
     }
 
     // Dump the object with the specified function
-    fn dump_object_function_here<T: ?Sized>(&mut self, value: &T, dump: DumpFunction<Self>); // Core function
+    fn dump_object_function_here<T: ? Sized>(&mut self, value: &T, dump: DumpFunction<Self>);
+    // Core function
     #[inline]
-    fn dump_object_function<T: ?Sized + Dump>(&mut self, value: &T, dump: DumpFunction<Self>) {
+    fn dump_object_function<T: ? Sized + Dump>(&mut self, value: &T, dump: DumpFunction<Self>) {
         self.dump_padding(value);
         self.dump_object_function_here(as_void_ref(value), dump);
     }
 
     #[inline]
-    fn dump_object_here<T: ?Sized + Dump>(&mut self, value: &T) {
+    fn dump_object_here<T: ? Sized + Dump>(&mut self, value: &T) {
         self.dump_object_function_here(as_void_ref(value), Self::get_dump_function::<T>());
     }
     #[inline]
-    fn dump_object<T: ?Sized + Dump>(&mut self, value: &T) {
+    fn dump_object<T: ? Sized + Dump>(&mut self, value: &T) {
         self.dump_padding(value);
         self.dump_object_here(value);
     }
 
-    fn dump_reference_here<T: ?Sized>(&mut self, value: &&T);
+    fn dump_reference_here<T: ? Sized>(&mut self, value: &&T);
     #[inline]
-    fn dump_reference<T: ?Sized>(&mut self, value: &&T) {
+    fn dump_reference<T: ? Sized>(&mut self, value: &&T) {
         self.dump_padding(value);
         self.dump_reference_here(value);
     }
 
-    fn reference_object_function_sized_position<T: ?Sized, P: ?Sized>(
+    fn reference_object_function_sized_position<T: ? Sized, P: ? Sized>(
         &mut self,
         value: &T,
         dump: DumpFunction<Self>,
         position: &P,
         size: usize,
-        alignment: usize
+        alignment: usize,
     );
     #[inline]
-    fn reference_object_sized_position<T: ?Sized + Dump, P: ?Sized>(
+    fn reference_object_sized_position<T: ? Sized + Dump, P: ? Sized>(
         &mut self,
         value: &T,
         position: &P,
         size: usize,
-        alignment: usize
+        alignment: usize,
     ) {
         self.reference_object_function_sized_position(value, Self::get_dump_function::<T>(), position, size, alignment);
     }
     #[inline]
-    fn reference_object_sized<T: ?Sized + Dump>(&mut self, value: &T, size: usize, alignment: usize) {
+    fn reference_object_sized<T: ? Sized + Dump>(&mut self, value: &T, size: usize, alignment: usize) {
         self.reference_object_sized_position(value, value, size, alignment)
     }
     #[inline]
-    fn reference_object<T: ?Sized + Dump>(&mut self, value: &T) {
+    fn reference_object<T: ? Sized + Dump>(&mut self, value: &T) {
         self.reference_object_sized(value, mem::size_of_val(value), mem::align_of_val(value))
     }
 
-    fn dump_reference_object_function_sized_position_offset_here<T: ?Sized, P: ?Sized>(
+    fn dump_reference_object_function_sized_position_offset_here<T: ? Sized, P: ? Sized>(
         &mut self,
         value: &T,
         dump: DumpFunction<Self>,
         position: &&P,
         size: usize,
         alignment: usize,
-        offset: isize
+        offset: isize,
     );
     #[inline]
-    fn dump_reference_object_function_sized_position_here<T: ?Sized, P: ?Sized>(
+    fn dump_reference_object_function_sized_position_here<T: ? Sized, P: ? Sized>(
         &mut self,
         value: &T,
         dump: DumpFunction<Self>,
         position: &&P,
         size: usize,
-        alignment: usize
+        alignment: usize,
     ) {
         self.dump_reference_object_function_sized_position_offset_here(value, dump, position, size, alignment, 0)
     }
     #[inline]
-    fn dump_reference_object_sized_position_here<T: ?Sized + Dump, P: ?Sized>(
+    fn dump_reference_object_sized_position_here<T: ? Sized + Dump, P: ? Sized>(
         &mut self,
         value: &T,
         position: &&P,
         size: usize,
-        alignment: usize
+        alignment: usize,
     ) {
         self.dump_reference_object_function_sized_position_here(
             value,
             Self::get_dump_function::<T>(),
             position,
             size,
-            alignment
+            alignment,
         );
     }
     #[inline]
-    fn dump_reference_object_sized_here<T: ?Sized + Dump>(&mut self, value: &&T, size: usize, alignment: usize) {
+    fn dump_reference_object_sized_here<T: ? Sized + Dump>(&mut self, value: &&T, size: usize, alignment: usize) {
         self.dump_reference_object_sized_position_here(*value, value, size, alignment)
     }
     #[inline]
-    fn dump_reference_object_here<T: ?Sized + Dump>(&mut self, value: &&T) {
+    fn dump_reference_object_here<T: ? Sized + Dump>(&mut self, value: &&T) {
         self.dump_reference_object_sized_here(value, mem::size_of_val(*value), mem::align_of_val(value))
     }
 
     #[inline]
-    fn dump_reference_object_function_sized_position_offset<T: ?Sized, P: ?Sized>(
+    fn dump_reference_object_function_sized_position_offset<T: ? Sized, P: ? Sized>(
         &mut self,
         value: &T,
         dump: DumpFunction<Self>,
         position: &&P,
         size: usize,
         alignment: usize,
-        offset: isize
+        offset: isize,
     ) {
         self.dump_padding(position);
         self.dump_reference_object_function_sized_position_offset_here(value, dump, position, size, alignment, offset);
     }
     #[inline]
-    fn dump_reference_object_function_sized_position<T: ?Sized, P: ?Sized>(
+    fn dump_reference_object_function_sized_position<T: ? Sized, P: ? Sized>(
         &mut self,
         value: &T,
         dump: DumpFunction<Self>,
         position: &&P,
         size: usize,
-        alignment: usize
+        alignment: usize,
     ) {
         self.dump_padding(position);
         self.dump_reference_object_function_sized_position_here(value, dump, position, size, alignment);
     }
     #[inline]
-    fn dump_reference_object_sized_position<T: ?Sized + Dump, P: ?Sized>(
+    fn dump_reference_object_sized_position<T: ? Sized + Dump, P: ? Sized>(
         &mut self,
         value: &T,
         position: &&P,
         size: usize,
-        alignment: usize
+        alignment: usize,
     ) {
         self.dump_padding(position);
         self.dump_reference_object_sized_position_here(value, position, size, alignment);
     }
     #[inline]
-    fn dump_reference_object_sized<T: ?Sized + Dump>(&mut self, value: &&T, size: usize, alignment: usize) {
+    fn dump_reference_object_sized<T: ? Sized + Dump>(&mut self, value: &&T, size: usize, alignment: usize) {
         self.dump_padding(value);
         self.dump_reference_object_sized_here(value, size, alignment)
     }
     #[inline]
-    fn dump_reference_object<T: ?Sized + Dump>(&mut self, value: &&T) {
+    fn dump_reference_object<T: ? Sized + Dump>(&mut self, value: &&T) {
         self.dump_padding(value);
         self.dump_reference_object_here(value)
     }
@@ -251,7 +255,7 @@ pub trait Dumper {
     // For dumping enums
     // (since the discriminant is a raw value and needs to be stored, but it may be at the begining or end of the enum)
     #[inline]
-    fn dump_prefix_value_here<T: ?Sized, U: ?Sized>(&mut self, start: &T, end: &U) {
+    fn dump_prefix_value_here<T: ? Sized, U: ? Sized>(&mut self, start: &T, end: &U) {
         let distance = Address::new(end) - Address::new(start);
         assert!(
             distance >= 0,
@@ -262,7 +266,7 @@ pub trait Dumper {
         self.dump_value_sized_here(start, distance as usize);
     }
     #[inline]
-    fn dump_prefix_value<T: ?Sized>(&mut self, end: &T) {
+    fn dump_prefix_value<T: ? Sized>(&mut self, end: &T) {
         let distance = Address::new(end) - self.current_position();
         assert!(
             distance >= 0,
@@ -274,7 +278,7 @@ pub trait Dumper {
         self.dump_value_sized_here(start, distance as usize);
     }
     #[inline]
-    fn dump_suffix_value_sized<T: ?Sized>(&mut self, start: &T, size: usize) {
+    fn dump_suffix_value_sized<T: ? Sized>(&mut self, start: &T, size: usize) {
         let distance = self.current_position() - Address::new(start);
         let end = self.current_position().to_ref::<()>();
         assert!(
@@ -291,30 +295,31 @@ pub trait Dumper {
     }
 
     #[inline]
-    fn get_dump_function<T: ?Sized + Dump>() -> DumpFunction<Self> {
+    fn get_dump_function<T: ? Sized + Dump>() -> DumpFunction<Self> {
         unsafe { mem::transmute::<fn(&T, &mut Self), DumpFunction<Self>>(T::dump::<Self>) }
     }
 }
 
 // For dumping parts of an object in arbitrary ordered (for use when rust reorders fields)
-pub struct DumpList<D: ?Sized + Dumper>(BTreeMap<Address, (Address, DumpFunction<D>)>);
-impl<D: ?Sized + Dumper> DumpList<D> {
+pub struct DumpList<D: ? Sized + Dumper>(BTreeMap<Address, (Address, DumpFunction<D>)>);
+
+impl<D: ? Sized + Dumper> DumpList<D> {
     #[inline]
     pub fn new() -> DumpList<D> {
         DumpList::<D>(BTreeMap::new())
     }
     #[inline]
-    pub fn add_position<P: ?Sized, T: ?Sized + Dump>(&mut self, position: &P, value: &T) {
+    pub fn add_position<P: ? Sized, T: ? Sized + Dump>(&mut self, position: &P, value: &T) {
         if mem::size_of_val(position) != 0 {
             // Ignore zero sized types
             self.0.insert(
                 Address::new(position),
-                (Address::new(value), D::get_dump_function::<T>())
+                (Address::new(value), D::get_dump_function::<T>()),
             );
         }
     }
     #[inline]
-    pub fn add<T: ?Sized + Dump>(&mut self, value: &T) {
+    pub fn add<T: ? Sized + Dump>(&mut self, value: &T) {
         self.add_position(value, value);
     }
     #[inline]

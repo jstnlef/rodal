@@ -15,8 +15,8 @@
 // This files defines types that can be used to dump instances of rust_std types
 // without actually making the realy std types
 
-use super::*;
 use std;
+use super::*;
 
 // Use new() to make a new fake arc and you can dump that
 // You can then reload a pointer to it as a real Arc
@@ -31,7 +31,7 @@ impl<'a, T: Dump> FakeArc<'a, T> {
     }
 
     // Dump an ArcInner
-    fn dump_inner<D: ?Sized + Dumper>(&self, dumper: &mut D) {
+    fn dump_inner<D: ? Sized + Dumper>(&self, dumper: &mut D) {
         dumper.debug_record::<Self>("dump_inner");
 
         let start = dumper.current_position();
@@ -48,8 +48,9 @@ impl<'a, T: Dump> FakeArc<'a, T> {
         dumper.dump_object_here(self.inner);
     }
 }
+
 unsafe impl<'a, T: Dump> Dump for FakeArc<'a, T> {
-    fn dump<D: ?Sized + Dumper>(&self, dumper: &mut D) {
+    fn dump<D: ? Sized + Dumper>(&self, dumper: &mut D) {
         dumper.debug_record::<Self>("dump");
 
         // Where to dump our fake ArcInner
@@ -66,12 +67,13 @@ unsafe impl<'a, T: Dump> Dump for FakeArc<'a, T> {
             },
             &fake_inner,
             std::mem::size_of::<rust_std::ArcInner<T>>(),
-            std::mem::align_of::<rust_std::ArcInner<T>>()
+            std::mem::align_of::<rust_std::ArcInner<T>>(),
         );
     }
 }
 
 pub struct EmptyHashMap<K, V, S = std::collections::hash_map::RandomState>(rust_std::HashMap<K, V, S>);
+
 impl<K: Eq + std::hash::Hash, V> EmptyHashMap<K, V, std::collections::hash_map::RandomState> {
     pub fn new() -> Self {
         unsafe {
@@ -90,9 +92,9 @@ impl<K: Eq + std::hash::Hash, V> EmptyHashMap<K, V, std::collections::hash_map::
 // (without them, we won't even be able to iterate over it's elements)
 rodal_named!([K: Eq + std::hash::Hash + Named, V: Named, S: std::hash::BuildHasher + Dump] EmptyHashMap<K, V, S> [type_name!("rodal::EmptyHashMap<{}, {}, {}>", K, V, S)]);
 unsafe impl<K: Eq + std::hash::Hash + Named, V: Named, S: std::hash::BuildHasher + Dump> Dump
-    for EmptyHashMap<K, V, S>
+for EmptyHashMap<K, V, S>
 {
-    fn dump<D: ?Sized + Dumper>(&self, dumper: &mut D) {
+    fn dump<D: ? Sized + Dumper>(&self, dumper: &mut D) {
         dumper.debug_record::<Self>("dump");
         dumper.dump_object(&self.0.hash_builder);
 
@@ -107,6 +109,7 @@ unsafe impl<K: Eq + std::hash::Hash + Named, V: Named, S: std::hash::BuildHasher
 }
 
 pub struct EmptyLinkedList<T>(rust_std::LinkedList<T>);
+
 impl<T> EmptyLinkedList<T> {
     pub fn new() -> Self {
         unsafe { std::mem::transmute(std::collections::LinkedList::<T>::new()) }
