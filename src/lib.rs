@@ -58,7 +58,7 @@ fn as_void_ref<T: ? Sized>(value: &T) -> &() {
     unsafe { mem::transmute(value as *const T as *const ()) }
 }
 
-pub type DumpFunction<D: Dumper> = fn(&(), &mut D);
+pub type DumpFunction<D> = fn(&(), &mut D);
 
 pub trait Dumper {
     // For debugging purposes, records that we are in the dump function 'func_name'
