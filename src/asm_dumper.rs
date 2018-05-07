@@ -1,28 +1,28 @@
 // Copyright 2017 The Australian National University
-// 
+//
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
-// 
+//
 //     http://www.apache.org/licenses/LICENSE-2.0
-// 
+//
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::{BTreeSet, HashMap};
-use std::io::Write;
-use std::fmt;
-use std::mem;
-use num::integer::lcm;
 use super::*;
+use num::integer::lcm;
+use std::collections::{BTreeSet, HashMap};
+use std::fmt;
+use std::io::Write;
+use std::mem;
 
 #[derive(Clone, Default)]
 struct AsmLabel {
     base: String,
-    offset: isize,
+    offset: isize
 }
 
 impl AsmLabel {
@@ -32,14 +32,14 @@ impl AsmLabel {
         } else {
             name
         };
-        AsmLabel {
-            base: name,
-            offset: 0
-        }
+        AsmLabel { base: name, offset: 0 }
     }
     // Move the label by the specified number of bytes
     fn offset(&self, offset: isize) -> AsmLabel {
-        AsmLabel {base: self.base.clone(), offset: self.offset + offset}
+        AsmLabel {
+            base: self.base.clone(),
+            offset: self.offset + offset
+        }
     }
 }
 
@@ -55,7 +55,7 @@ struct ObjectInfo<W: Write> {
     alignment: usize,
     label: AsmLabel,
     value: Address, // The arg to pass to dump
-    dump: DumpFunction<AsmDumper<W>>,
+    dump: DumpFunction<AsmDumper<W>>
 }
 impl<W: Write> Clone for ObjectInfo<W> {
     fn clone(&self) -> ObjectInfo<W> {
@@ -65,19 +65,26 @@ impl<W: Write> Clone for ObjectInfo<W> {
             alignment: self.alignment,
             label: self.label.clone(),
             value: self.value,
-            dump: self.dump,
+            dump: self.dump
         }
     }
 }
 impl<W: Write> ObjectInfo<W> {
-    fn new(value: Address, dump: DumpFunction<AsmDumper<W>>, start: Address, size: usize, alignment: usize, label: AsmLabel) -> ObjectInfo<W> {
+    fn new(
+        value: Address,
+        dump: DumpFunction<AsmDumper<W>>,
+        start: Address,
+        size: usize,
+        alignment: usize,
+        label: AsmLabel
+    ) -> ObjectInfo<W> {
         ObjectInfo {
             start: start,
             size: size,
             label: label,
             alignment: alignment,
             value: value,
-            dump: dump,
+            dump: dump
         }
     }
 }
@@ -88,18 +95,17 @@ const POINTER_DIRECTIVE: &str = ".quad";
 const POINTER_DIRECTIVE: &str = ".xword";
 
 enum AsmDirective {
-    Byte,       // Whe are inside a .byte
-    Ptr,        // We are inside a POINTER_DIRECTIVE 
-    Other       // we aran't inside either
+    Byte,  // Whe are inside a .byte
+    Ptr,   // We are inside a POINTER_DIRECTIVE
+    Other  // we aran't inside either
 }
 
-pub struct AsmDumper<W: Write>
-{
+pub struct AsmDumper<W: Write> {
     file: W,
     current_directive: AsmDirective,
 
     current_pointer: Address, // This is the pointer into the output we are dumping
-    position_offset: isize, // The offset from current_pointer to tell objects where we are
+    position_offset: isize,   // The offset from current_pointer to tell objects where we are
 
     #[cfg(debug_assertions)]
     debug_stack: Vec<Address>, // For debugging only
@@ -117,7 +123,7 @@ pub struct AsmDumper<W: Write>
 
     /// References that haven't been resolved to be relative to a complete object yet
     pending_references: BTreeSet<Address>,
-    tags: HashMap<usize, Vec<*const ()>>,
+    tags: HashMap<usize, Vec<*const ()>>
 }
 impl<W: Write> AsmDumper<W> {
     #[cfg(debug_assertions)]
@@ -154,8 +160,7 @@ impl<W: Write> AsmDumper<W> {
             tags: HashMap::new()
         }
     }
-    pub fn dump_sized<T: ?Sized + Dump>(&mut self, name: &str, value: &T, size: usize, alignment: usize) -> &mut Self
-    {
+    pub fn dump_sized<T: ?Sized + Dump>(&mut self, name: &str, value: &T, size: usize, alignment: usize) -> &mut Self {
         assert!(alignment != 0);
 
         let start = Address::new(value);
@@ -166,13 +171,17 @@ impl<W: Write> AsmDumper<W> {
 
         debug_only!({
             trace!("");
-            trace!("dumping {} [{}, {:+}):", label.base.clone(), start, size)});
+            trace!("dumping {} [{}, {:+}):", label.base.clone(), start, size)
+        });
         self.write_global(&label);
         self.write_type_object(&label);
         self.write_size_align(size, alignment);
         self.write_label_declaration(&label);
         let dump_function = Self::get_dump_function::<T>();
-        self.dumped_objects.insert(start, ObjectInfo::<W>::new(start, dump_function, start, size, alignment, label.clone()));
+        self.dumped_objects.insert(
+            start,
+            ObjectInfo::<W>::new(start, dump_function, start, size, alignment, label.clone())
+        );
         self.dump_object_function_here(value, dump_function);
         self.advance_position(start + size); // Add any neccesary padding
         self.write_size(&label);
@@ -206,7 +215,8 @@ impl<W: Write> AsmDumper<W> {
 
                 debug_only!({
                     trace!("");
-                    trace!("dumping {} [{}, {:+}):", value.label.base.clone(), start, value.size)});
+                    trace!("dumping {} [{}, {:+}):", value.label.base.clone(), start, value.size)
+                });
                 self.write_type_object(&value.label);
                 self.write_size_align(value.size, value.alignment);
                 self.write_label_declaration(&value.label);
@@ -234,28 +244,30 @@ impl<W: Write> AsmDumper<W> {
     fn start_directive(&mut self, new_directive: AsmDirective) {
         match self.current_directive {
             // End the directive with a newline
-            AsmDirective::Byte | AsmDirective::Ptr => {writeln!(self.file).unwrap();}
+            AsmDirective::Byte | AsmDirective::Ptr => {
+                writeln!(self.file).unwrap();
+            }
             _ => {}
         }
         self.current_directive = new_directive;
     }
     #[inline]
-    pub fn dump<T: ?Sized + Dump>(&mut self, name: &str, value: &T)  -> &mut Self {
+    pub fn dump<T: ?Sized + Dump>(&mut self, name: &str, value: &T) -> &mut Self {
         self.dump_sized(name, value, mem::size_of_val(value), mem::align_of_val(value))
     }
     #[inline]
-    fn write_skip(&mut self, size: usize)  {
+    fn write_skip(&mut self, size: usize) {
         self.start_directive(AsmDirective::Other);
         writeln!(self.file, "\t.skip {}", size).unwrap();
     }
 
     #[inline]
-    fn write_byte(&mut self, value: u8)  {
+    fn write_byte(&mut self, value: u8) {
         match self.current_directive {
             // Continue the current byte directive
             AsmDirective::Byte => {
                 write!(self.file, ", ").unwrap();
-            },
+            }
             _ => {
                 self.start_directive(AsmDirective::Byte);
                 // Start a new byte directive
@@ -267,23 +279,24 @@ impl<W: Write> AsmDumper<W> {
     }
 
     #[inline]
-    fn write_size(&mut self, label: &AsmLabel)  {
+    fn write_size(&mut self, label: &AsmLabel) {
         assert!(label.offset == 0);
         self.start_directive(AsmDirective::Other);
-        if cfg!(target_os = "linux") { // Not suported on macosx
+        if cfg!(target_os = "linux") {
+            // Not suported on macosx
             writeln!(self.file, "\t.size {}, .-{}", label.base, label.base).unwrap();
             writeln!(self.file).unwrap();
         }
     }
 
     #[inline]
-    fn write_equiv(&mut self, target: AsmLabel, source: AsmLabel)  {
+    fn write_equiv(&mut self, target: AsmLabel, source: AsmLabel) {
         self.start_directive(AsmDirective::Other);
         writeln!(self.file, "\t.equiv {}, {}", target.base, source.offset(-target.offset)).unwrap();
     }
 
     #[inline]
-    fn write_label_reference(&mut self, label: AsmLabel)  {
+    fn write_label_reference(&mut self, label: AsmLabel) {
         match self.current_directive {
             // Continue the current ptr directive
             AsmDirective::Ptr => write!(self.file, ", {}", label).unwrap(),
@@ -298,7 +311,7 @@ impl<W: Write> AsmDumper<W> {
     #[inline]
     // We need to write the size of objects so that we can handle it if
     // realloc is called on one
-    fn write_size_align(&mut self, size: usize, alignment: usize)  {
+    fn write_size_align(&mut self, size: usize, alignment: usize) {
         // We need to align to usize as we will store a usize indicating the size of the object
         let alignment = lcm(mem::align_of::<usize>(), alignment);
         self.start_directive(AsmDirective::Other);
@@ -327,7 +340,8 @@ impl<W: Write> AsmDumper<W> {
     fn write_type_object(&mut self, label: &AsmLabel) {
         assert!(label.offset == 0);
         self.start_directive(AsmDirective::Other);
-        if cfg!(target_os = "linux") { // Not suported on macosx
+        if cfg!(target_os = "linux") {
+            // Not suported on macosx
             writeln!(self.file, "\t.type {}, %object", label.base).unwrap();
         }
     }
@@ -344,7 +358,12 @@ impl<W: Write> AsmDumper<W> {
         //trace!("{:?}: advance_position({:?})", self.current_pointer, address);
 
         let padding = address - self.current_pointer;
-        assert!(padding >= 0, "can't advance from {} to {}", self.current_pointer, address);
+        assert!(
+            padding >= 0,
+            "can't advance from {} to {}",
+            self.current_pointer,
+            address
+        );
         if padding != 0 {
             self.write_skip(padding as usize);
         }
@@ -371,7 +390,8 @@ impl<W: Write> AsmDumper<W> {
                 self.dumped_objects.get(&start)
             } else if self.pending_objects.contains_key(&start) {
                 self.pending_objects.get(&start)
-            } else if self.dumping_objects.contains_key(&start) { // self.dumping_objects.contains_key(&start)
+            } else if self.dumping_objects.contains_key(&start) {
+                // self.dumping_objects.contains_key(&start)
                 self.dumping_objects.get(&start)
             } else {
                 None
@@ -379,9 +399,15 @@ impl<W: Write> AsmDumper<W> {
 
             if object.is_some() {
                 let object = object.unwrap();
-                debug_assert!(object.size == size && object.alignment == alignment,
+                debug_assert!(
+                    object.size == size && object.alignment == alignment,
                     "conflicting layouts for object [{}], got size = {} and {}, and alignment = {} and {}",
-                    start, object.size, size, object.alignment, alignment);
+                    start,
+                    object.size,
+                    size,
+                    object.alignment,
+                    alignment
+                );
             }
         });
 
@@ -389,7 +415,14 @@ impl<W: Write> AsmDumper<W> {
     }
 
     #[inline]
-    fn new_object(&mut self, start: Address, size: usize, alignment: usize, value: Address, dump: DumpFunction<Self>) -> AsmLabel {
+    fn new_object(
+        &mut self,
+        start: Address,
+        size: usize,
+        alignment: usize,
+        value: Address,
+        dump: DumpFunction<Self>
+    ) -> AsmLabel {
         // This is the first time we've called reference_object on this pointer
         let label = AsmLabel::new(format!("object_{}", start));
 
@@ -398,7 +431,7 @@ impl<W: Write> AsmDumper<W> {
         // Also the insane borrow checker won't let me call write_equiv within the loop either
         let mut delete_keys: Vec<Address> = Vec::new(); // A list of keys to delete from pending_references
         let mut write_equiv_args: Vec<(AsmLabel, AsmLabel)> = Vec::new();
-        for ptr in self.pending_references.range(start..start+size) {
+        for ptr in self.pending_references.range(start..start + size) {
             // Any reference that overlaps with a complete object should be entirely contained by that object
             write_equiv_args.push((AsmLabel::new(format!(".Lptr_{}", ptr)), label.offset(*ptr - start)));
             delete_keys.push(*ptr);
@@ -408,7 +441,7 @@ impl<W: Write> AsmDumper<W> {
         }
         for key in delete_keys {
             self.pending_references.remove(&key);
-        };
+        }
 
         // Value is suposed to be a new complete object, so verify it does
         // not overlap with any other complete objects
@@ -420,7 +453,10 @@ impl<W: Write> AsmDumper<W> {
             debug_assert!(get_overlap(start, start+size, &mut self.dumping_objects).count() == 0,
                 "the object range [{}, {}) overlaps with a complete object", start, start+size);*/
         });
-        self.pending_objects.insert(start, ObjectInfo::new(value, dump, start, size, alignment, label.clone()));
+        self.pending_objects.insert(
+            start,
+            ObjectInfo::new(value, dump, start, size, alignment, label.clone())
+        );
         label
     }
 }
@@ -432,13 +468,22 @@ impl<W: Write> Dumper for AsmDumper<W> {
         let value = Address::new(value).to_ptr::<()>();
 
         match &mut self.tags.get_mut(&tag) {
-            &mut Some(ref mut vec) => { return vec.push(value); } // Add to the existing list
-            &mut None => { }
+            &mut Some(ref mut vec) => {
+                return vec.push(value);
+            } // Add to the existing list
+            &mut None => {}
         }
         self.tags.insert(tag, vec![value]); // Add a new list
     }
     /// Record the given complete object as needing to be dumped (because it is referenced)
-    fn reference_object_function_sized_position<T: ?Sized, P: ?Sized>(&mut self, value: &T, dump: DumpFunction<Self>, position: &P, size: usize, alignment: usize) {
+    fn reference_object_function_sized_position<T: ?Sized, P: ?Sized>(
+        &mut self,
+        value: &T,
+        dump: DumpFunction<Self>,
+        position: &P,
+        size: usize,
+        alignment: usize
+    ) {
         // Objects with zero size should never be referenced
         // If they could be, then there could be ambiguouty if a complete object contains this address,
         // and we have a pointer with the value, does it point to this object of zero size, or the other overlaping one?
@@ -447,10 +492,12 @@ impl<W: Write> Dumper for AsmDumper<W> {
         // Just don't allow them, it makes things simpler.
         assert!(size != 0 && alignment != 0);
         let start = Address::new(position);
-        debug_only!(trace!("{empty:indent$} =>{location}",
+        debug_only!(trace!(
+            "{empty:indent$} =>{location}",
             empty = "",
             indent = *self.debug_indent.last().unwrap(),
-            location = start));
+            location = start
+        ));
 
         //trace!("{:?}: reference_object_sized_position({}, {}, {}, {})", self.current_pointer, Address::new(value), start, size, alignment);
 
@@ -461,13 +508,23 @@ impl<W: Write> Dumper for AsmDumper<W> {
     }
 
     /// Record the given complete object as needing to be dumped, and dump a reference to it
-    fn dump_reference_object_function_sized_position_offset_here<T: ?Sized, P: ?Sized>(&mut self, value: &T, dump: DumpFunction<Self>, position: &&P, size: usize, alignment: usize, offset: isize) {
+    fn dump_reference_object_function_sized_position_offset_here<T: ?Sized, P: ?Sized>(
+        &mut self,
+        value: &T,
+        dump: DumpFunction<Self>,
+        position: &&P,
+        size: usize,
+        alignment: usize,
+        offset: isize
+    ) {
         assert!(size != 0 && alignment != 0);
         let start = Address::new(*position);
-        debug_only!(trace!("{empty:indent$} -=>{location}",
+        debug_only!(trace!(
+            "{empty:indent$} -=>{location}",
             empty = "",
             indent = *self.debug_indent.last().unwrap(),
-            location = start));
+            location = start
+        ));
 
         //trace!("{:?}: dump_reference_object_sized_position({}, {}, {}, {})", self.current_pointer, Address::new(value), start, size, alignment);
 
@@ -486,10 +543,12 @@ impl<W: Write> Dumper for AsmDumper<W> {
 
     fn dump_reference_here<T: ?Sized>(&mut self, value: &&T) {
         let ptr = Address::new(*value);
-        debug_only!(trace!("{empty:indent$} ->{location}",
+        debug_only!(trace!(
+            "{empty:indent$} ->{location}",
             empty = "",
             indent = *self.debug_indent.last().unwrap(),
-            location = ptr));
+            location = ptr
+        ));
 
         //trace!("{:?}: dump_reference_here({:?} = &{})", self.current_pointer, Address::new(value), ptr);
 
@@ -542,14 +601,20 @@ impl<W: Write> Dumper for AsmDumper<W> {
     fn debug_record<T: ?Sized + Named>(&mut self, func_name: &str) {
         // Print the level, followed by a collen, followed 'level' spaces,
         // followed by the offset (with a sign) a tab, and the type and function name
-        let indent = format!("{level}:{empty:level$}{offset:+}:        ",
+        let indent = format!(
+            "{level}:{empty:level$}{offset:+}:        ",
             level = self.debug_stack.len(),
             empty = "",
-            offset = self.current_pointer - *self.debug_stack.last().unwrap_or(&self.current_pointer));
+            offset = self.current_pointer - *self.debug_stack.last().unwrap_or(&self.current_pointer)
+        );
         self.debug_indent.push(indent.len());
 
-        trace!("{}{type_name}::{func_name}",
-            indent, type_name = T::name(), func_name = func_name);
+        trace!(
+            "{}{type_name}::{func_name}",
+            indent,
+            type_name = T::name(),
+            func_name = func_name
+        );
         self.debug_stack.push(self.current_pointer);
     }
 
@@ -559,7 +624,9 @@ impl<W: Write> Dumper for AsmDumper<W> {
         self.position_offset = new_position - self.current_pointer;
         assert!(self.current_position() == new_position);
     }
-    fn current_position(&self) -> Address { self.current_pointer + self.position_offset }
+    fn current_position(&self) -> Address {
+        self.current_pointer + self.position_offset
+    }
     // CALL This whenever we execute a dump function...
     fn dump_object_function_here<T: ?Sized>(&mut self, value: &T, dump: DumpFunction<Self>) {
         let old_offset = self.position_offset;
@@ -568,7 +635,10 @@ impl<W: Write> Dumper for AsmDumper<W> {
 
         //trace!("{:?}: dump_object_function_here({:?}, {})", self.current_pointer, Address::new(value), unsafe{mem::transmute::<DumpFunction<Self>, Address>(dump)});
         (dump)(value.to_ref::<()>(), self);
-        debug_only!({self.debug_stack.pop(); self.debug_indent.pop()});
+        debug_only!({
+            self.debug_stack.pop();
+            self.debug_indent.pop()
+        });
         //debug_only!();
         self.position_offset = old_offset;
     }
@@ -590,8 +660,7 @@ fn get_overlap<'a, W: Write>(start: Address, end: Address, map: &'a mut HashMap<
 }*/
 
 // Gets the complete object that contains start
-fn get_complete_object<'a, W: Write>(_ /*start*/: Address, _ /*map*/: &'a HashMap<Address, ObjectInfo<W>>)
-                              -> Option<&'a ObjectInfo<W>> {
+fn get_complete_object<'a, W: Write>(_: Address, _: &'a HashMap<Address, ObjectInfo<W>>) -> Option<&'a ObjectInfo<W>> {
     unimplemented!();
     /*match map.range((Bound::Unbounded, Bound::Included(start))).last() {
         Some((_, value)) => {

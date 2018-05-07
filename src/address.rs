@@ -1,11 +1,11 @@
 // Copyright 2017 The Australian National University
-// 
+//
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
-// 
+//
 //     http://www.apache.org/licenses/LICENSE-2.0
-// 
+//
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -13,9 +13,9 @@
 // limitations under the License.
 
 use std::fmt::*;
-use std::ops::*;
 use std::isize;
 use std::mem;
+use std::ops::*;
 
 // A utility trait that makes checks when casting
 trait CheckedCast<T> {
@@ -38,36 +38,62 @@ impl CheckedCast<usize> for isize {
 #[derive(Eq, Default, Hash, PartialOrd, Clone, Copy, PartialEq, Ord, Debug)]
 pub struct Address(usize);
 impl Address {
-    pub fn null() -> Address { Address(0usize) }
-    pub fn max() -> Address { Address(!0usize) }
-    pub fn new<T: ?Sized>(value: &T) -> Address { Address(value as *const T as *const() as usize) }
-    pub fn from_ptr<T: ?Sized>(value: *const T) -> Address { Address(value as *const() as usize) }
-    pub fn to_ref<'a, T>(&self) -> &'a T { unsafe { mem::transmute(self.to_ptr::<T>())} }
-    pub fn value(&self) -> usize { self.0 }
-    pub fn to_ptr<T>(&self) -> *const T { self.0 as *const T }
+    pub fn null() -> Address {
+        Address(0usize)
+    }
+    pub fn max() -> Address {
+        Address(!0usize)
+    }
+    pub fn new<T: ?Sized>(value: &T) -> Address {
+        Address(value as *const T as *const () as usize)
+    }
+    pub fn from_ptr<T: ?Sized>(value: *const T) -> Address {
+        Address(value as *const () as usize)
+    }
+    pub fn to_ref<'a, T>(&self) -> &'a T {
+        unsafe { mem::transmute(self.to_ptr::<T>()) }
+    }
+    pub fn value(&self) -> usize {
+        self.0
+    }
+    pub fn to_ptr<T>(&self) -> *const T {
+        self.0 as *const T
+    }
 }
 impl Add<usize> for Address {
     type Output = Address;
-    fn add(self, other: usize) -> Address { Address(self.0 + other) }
+    fn add(self, other: usize) -> Address {
+        Address(self.0 + other)
+    }
 }
 impl Add<isize> for Address {
     type Output = Address;
     fn add(self, other: isize) -> Address {
         if cfg!(debug_assertions) {
             // This is neccesary to make rust perform overflow checking approprietly
-            if other >= 0 { Address(self.0 + other as usize) } else { Address(self.0 - other.wrapping_neg() as usize) }
+            if other >= 0 {
+                Address(self.0 + other as usize)
+            } else {
+                Address(self.0 - other.wrapping_neg() as usize)
+            }
         } else {
             Address(self.0.wrapping_add(other as usize))
         }
     }
 }
 impl AddAssign<usize> for Address {
-    fn add_assign(&mut self, other: usize) { self.0 += other }
+    fn add_assign(&mut self, other: usize) {
+        self.0 += other
+    }
 }
 impl AddAssign<isize> for Address {
     fn add_assign(&mut self, other: isize) {
         if cfg!(debug_assertions) {
-            if other >= 0 { self.0 += other as usize } else { self.0 -= other.wrapping_neg() as usize }
+            if other >= 0 {
+                self.0 += other as usize
+            } else {
+                self.0 -= other.wrapping_neg() as usize
+            }
         } else {
             self.0 = self.0.wrapping_add(other as usize);
         }
@@ -75,24 +101,36 @@ impl AddAssign<isize> for Address {
 }
 impl Sub<usize> for Address {
     type Output = Address;
-    fn sub(self, other: usize) -> Address { Address(self.0 - other) }
+    fn sub(self, other: usize) -> Address {
+        Address(self.0 - other)
+    }
 }
 impl Sub<isize> for Address {
     type Output = Address;
     fn sub(self, other: isize) -> Address {
         if cfg!(debug_assertions) {
-            if other >= 0 { Address(self.0 - other as usize) } else { Address(self.0 + other.wrapping_neg() as usize) }
+            if other >= 0 {
+                Address(self.0 - other as usize)
+            } else {
+                Address(self.0 + other.wrapping_neg() as usize)
+            }
         } else {
             Address(self.0.wrapping_sub(other as usize))
         }
     }
 }
 impl SubAssign<usize> for Address {
-    fn sub_assign(&mut self, other: usize) { self.0 -= other }
+    fn sub_assign(&mut self, other: usize) {
+        self.0 -= other
+    }
 }
 impl SubAssign<isize> for Address {
     fn sub_assign(&mut self, other: isize) {
-        if other >= 0 { self.0 -= other as usize } else { self.0 += other.wrapping_neg() as usize }
+        if other >= 0 {
+            self.0 -= other as usize
+        } else {
+            self.0 += other.wrapping_neg() as usize
+        }
     }
 }
 impl Sub<Address> for Address {

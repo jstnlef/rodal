@@ -21,7 +21,7 @@ use std;
 // Use new() to make a new fake arc and you can dump that
 // You can then reload a pointer to it as a real Arc
 pub struct FakeArc<'a, T: 'a> {
-    inner: &'a T,
+    inner: &'a T
 }
 
 rodal_named!(['a, T: Dump] FakeArc<'a, T> [type_name!("rodal::FakeArc<{}>", T)]);
@@ -54,20 +54,30 @@ unsafe impl<'a, T: Dump> Dump for FakeArc<'a, T> {
 
         // Where to dump our fake ArcInner
         // (make it include the real position of inner so that references to inside of inner will be correctly preserved)
-        let fake_inner = (Address::new(self.inner) - offset_of!(rust_std::ArcInner<T> => data).get_byte_offset()).to_ref::<rust_std::ArcInner<T>>();
+        let fake_inner = (Address::new(self.inner) - offset_of!(rust_std::ArcInner<T> => data).get_byte_offset())
+            .to_ref::<rust_std::ArcInner<T>>();
 
         dumper.dump_padding(&self.inner);
         dumper.dump_reference_object_function_sized_position_here(
             self, // the argument to pass to the dump function
             // The function to use to dump the contents
-            unsafe { std::mem::transmute::<fn(&FakeArc<'a, T>, &mut D), DumpFunction<D>>(FakeArc::<'a, T>::dump_inner) },
-            &fake_inner, std::mem::size_of::<rust_std::ArcInner<T>>(), std::mem::align_of::<rust_std::ArcInner<T>>());
+            unsafe {
+                std::mem::transmute::<fn(&FakeArc<'a, T>, &mut D), DumpFunction<D>>(FakeArc::<'a, T>::dump_inner)
+            },
+            &fake_inner,
+            std::mem::size_of::<rust_std::ArcInner<T>>(),
+            std::mem::align_of::<rust_std::ArcInner<T>>()
+        );
     }
 }
 
 pub struct EmptyHashMap<K, V, S = std::collections::hash_map::RandomState>(rust_std::HashMap<K, V, S>);
 impl<K: Eq + std::hash::Hash, V> EmptyHashMap<K, V, std::collections::hash_map::RandomState> {
-    pub fn new() -> Self { unsafe {std::mem::transmute(std::collections::HashMap::<K, V, std::collections::hash_map::RandomState>::new()) } }
+    pub fn new() -> Self {
+        unsafe {
+            std::mem::transmute(std::collections::HashMap::<K, V, std::collections::hash_map::RandomState>::new())
+        }
+    }
 }
 
 // TODO: Rustc complains with 'transmute called with differently sized types: std::collections::HashMap<K, V, S> (size can vary because of S) to dump_std::EmptyHashMap<K, V, S> (size can vary because of S)'
@@ -80,8 +90,9 @@ impl<K: Eq + std::hash::Hash, V> EmptyHashMap<K, V, std::collections::hash_map::
 // (without them, we won't even be able to iterate over it's elements)
 rodal_named!([K: Eq + std::hash::Hash + Named, V: Named, S: std::hash::BuildHasher + Dump] EmptyHashMap<K, V, S> [type_name!("rodal::EmptyHashMap<{}, {}, {}>", K, V, S)]);
 unsafe impl<K: Eq + std::hash::Hash + Named, V: Named, S: std::hash::BuildHasher + Dump> Dump
-for EmptyHashMap<K, V, S> {
-    fn dump<D: ? Sized + Dumper>(&self, dumper: &mut D) {
+    for EmptyHashMap<K, V, S>
+{
+    fn dump<D: ?Sized + Dumper>(&self, dumper: &mut D) {
         dumper.debug_record::<Self>("dump");
         dumper.dump_object(&self.0.hash_builder);
 
@@ -97,7 +108,9 @@ for EmptyHashMap<K, V, S> {
 
 pub struct EmptyLinkedList<T>(rust_std::LinkedList<T>);
 impl<T> EmptyLinkedList<T> {
-    pub fn new() -> Self { unsafe {std::mem::transmute(std::collections::LinkedList::<T>::new()) } }
+    pub fn new() -> Self {
+        unsafe { std::mem::transmute(std::collections::LinkedList::<T>::new()) }
+    }
 }
 rodal_value!([T: Named] EmptyLinkedList<T> [type_name!("rodal::EmptyLinkedList<{}>", T)]);
 
@@ -109,4 +122,3 @@ impl<T> EmptyOption<T> {
     }
 }
 rodal_value!([T: Named] EmptyOption<T> [type_name!("rodal::EmptyOption<{}>", T)]);
-
